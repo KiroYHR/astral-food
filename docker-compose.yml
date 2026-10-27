@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: astralfood-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: astralfood_admin
+      POSTGRES_PASSWORD: astralfood_password_123
+      POSTGRES_DB: astralfood_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: astralfood-backend
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: postgresql://astralfood_admin:astralfood_password_123@postgres:5432/astralfood_db?schema=public
+      PORT: 8000
+      NODE_ENV: development
+    ports:
+      - "8000:8000"
+
+volumes:
+  postgres_data:
