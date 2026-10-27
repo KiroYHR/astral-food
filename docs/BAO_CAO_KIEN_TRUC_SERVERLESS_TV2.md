@@ -114,38 +114,16 @@ flowchart TD
 
 ---
 
-## 💻 5. HƯỚNG DẪN KHỞI CHẠY & TEST BẰNG GIAO DIỆN UI
+## ⚡ 5. QUY TRÌNH VẬN HÀNH SERVERLESS TRÊN AWS (PRODUCTION FLOW)
 
-### 5.1. Khởi động hệ thống
-Mở terminal tại thư mục backend và chạy:
-```powershell
-cd "astral-food\backend"
-npm run dev
-# Hoặc: node src/server.js
-```
-
-### 5.2. Mở giao diện Test Suite
-Truy cập trình duyệt tại địa chỉ:
-👉 **`http://localhost:5000`**
-
-### 5.3. Kịch bản test thực tế:
-1. **Bước 1 (Khách đặt món)**:
-   * Tại tab **"Khách Đặt Món"**, chọn quán *Trà Sữa AstralFood* (`store-1`) hoặc *Cơm Tấm Sài Gòn* (`store-2`).
-   * Bấm `➕ Thêm vào giỏ` một số món ăn.
-   * Nhập mã voucher `ASTRAL20` để xem giảm giá 20% tự động hiển thị.
-   * Bấm nút **"🚀 Đặt Đơn Hàng Ngay (Bắn SQS Event)"**.
-2. **Bước 2 (Kiểm tra AWS Lambda)**:
-   * Ngay tại bảng **Lịch sử đơn hàng**:
-     * Bấm nút **`📄 Hóa đơn PDF`**: Trình duyệt sẽ mở modal hiển thị file PDF hóa đơn được vẽ động bởi Lambda Worker.
-     * Bấm nút **`✉️ Xem Email`**: Xem trước giao diện email xác nhận mà SES sẽ gửi.
-3. **Bước 3 (Chủ quán xử lý & Analytics)**:
-   * Chuyển sang tab **"Chủ Quán (Merchant & Analytics)"**.
-   * Đơn hàng vừa đặt xuất hiện ở trạng thái `Chờ xác nhận`.
-   * Bấm các nút: `👨‍🍳 Nhận nấu` ➔ `🛵 Giao hàng` ➔ `✅ Hoàn tất`.
-   * Khi đơn chuyển sang `COMPLETED`, thẻ **Tổng Doanh Thu** và **Đơn Hàng Hoàn Thành** lập tức tự động tăng lên.
-4. **Bước 4 (Quan sát sự kiện AWS)**:
-   * Chuyển sang tab **"AWS Event-Driven Console"**.
-   * Quan sát Message Body JSON vừa được hệ thống đóng gói và đẩy vào hàng đợi SQS.
+1. **Khách hàng đặt món trên Frontend (TV3)**:
+   * Frontend gửi request `POST /api/v1/orders` tới Backend Core (TV1).
+   * Backend ghi nhận đơn hàng vào Amazon RDS PostgreSQL.
+2. **Bắn sự kiện bất đồng bộ vào Amazon SQS**:
+   * Ngay sau khi ghi nhận đơn hàng, Backend đẩy message JSON vào hàng đợi `astralfood-orders-queue` thông qua `sqsService.ts` trong thời gian < 50ms.
+3. **AWS Lambda kích hoạt tự động (Event-Driven Trigger)**:
+   * **`invoice-generator`**: Tự động nhận event từ SQS, khởi tạo tài liệu hóa đơn định dạng PDF chất lượng cao bằng PDFKit và lưu trữ trực tiếp lên Amazon S3 (`s3://astralfood-invoices/invoices/{order_id}.pdf`).
+   * **`notification-sender`**: Nhận event từ SQS, khởi tạo template email HTML responsive và chuyển tiếp lệnh gửi email thông báo xác nhận tới khách hàng thông qua Amazon SES.
 
 ---
 

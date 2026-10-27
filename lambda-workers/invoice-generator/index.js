@@ -157,11 +157,3 @@ exports.handler = async (event) => {
 exports.generateInvoicePDFBuffer = generateInvoicePDFBuffer;
 exports.normalizeOrderData = normalizeOrderData;
 
-// Cho phep chay test doc lap local
-if (require.main === module) {
-  const sampleEvent = require('../sample-sqs-event.json');
-  process.env.LOCAL_SIMULATION = 'true';
-  exports.handler(sampleEvent)
-    .then(res => console.log('Test sample-sqs-event ket qua:', res));
-}
-

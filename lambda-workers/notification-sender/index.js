@@ -162,11 +162,3 @@ exports.handler = async (event) => {
 exports.createOrderConfirmationHTML = createOrderConfirmationHTML;
 exports.normalizeOrderData = normalizeOrderData;
 
-// Cho phép test chạy local độc lập
-if (require.main === module) {
-  const sampleEvent = require('../sample-sqs-event.json');
-  process.env.LOCAL_SIMULATION = 'true';
-  exports.handler(sampleEvent)
-    .then(res => console.log('Test notification-sender với sample-sqs-event kết quả:', res));
-}
-
