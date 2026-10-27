@@ -2,6 +2,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import CustomerLayout from './layouts/CustomerLayout';
 import MerchantLayout from './layouts/MerchantLayout';
+import AdminLayout from './layouts/AdminLayout';
 import HomePage from './pages/customer/HomePage';
 import StoreDetailPage from './pages/customer/StoreDetailPage';
 import CheckoutPage from './pages/customer/CheckoutPage';
@@ -10,7 +11,7 @@ import ProfilePage from './pages/customer/ProfilePage';
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
 import MerchantDashboardPage from './pages/merchant/MerchantDashboardPage';
-import AdminPlaceholderPage from './pages/admin/AdminPlaceholderPage';
+import AdminDashboardPage from './pages/admin/AdminDashboardPage';
 
 export const App: React.FC = () => {
   return (
@@ -25,6 +26,11 @@ export const App: React.FC = () => {
           <Route index element={<MerchantDashboardPage />} />
         </Route>
 
+        {/* System Admin Portal Routes (Phân hệ Quản trị viên Phase 4) */}
+        <Route path="/admin" element={<AdminLayout />}>
+          <Route index element={<AdminDashboardPage />} />
+        </Route>
+
         {/* Main Customer Layout (Phân hệ Khách hàng Phase 2) */}
         <Route path="/" element={<CustomerLayout />}>
           <Route index element={<HomePage />} />
@@ -32,7 +38,6 @@ export const App: React.FC = () => {
           <Route path="checkout" element={<CheckoutPage />} />
           <Route path="my-orders" element={<MyOrdersPage />} />
           <Route path="profile" element={<ProfilePage />} />
-          <Route path="admin" element={<AdminPlaceholderPage />} />
         </Route>
 
         {/* 404 Fallback */}

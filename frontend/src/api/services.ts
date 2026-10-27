@@ -12,6 +12,7 @@ import type {
   CreateOrderPayload,
   PresignedUrlResponse,
   AICopilotResponse,
+  PlatformOverview,
 } from '../types';
 
 // Kiểm tra cờ Mock từ biến môi trường (mặc định là true nếu chưa cấu hình)
@@ -543,7 +544,7 @@ export const orderService = {
 };
 
 // ==========================================
-// 7. ADMIN SERVICE (TV1 RESTful Contract)
+// 7. ADMIN SERVICE (TV1 RESTful Contract & Phase 4)
 // ==========================================
 export const adminService = {
   async getUsers(): Promise<User[]> {
@@ -554,5 +555,209 @@ export const adminService = {
     }
     const res: any = await apiClient.get('/admin/users');
     return res;
+  },
+
+  async getAllStoresForAdmin(): Promise<Store[]> {
+    if (USE_MOCK) {
+      await mockDelay();
+      const db = getMockDb();
+      return db.stores;
+    }
+    const res: any = await apiClient.get('/admin/stores');
+    return res;
+  },
+
+  async toggleStoreApproval(storeId: string, isActive: boolean): Promise<Store> {
+    if (USE_MOCK) {
+      await mockDelay(150);
+      const db = getMockDb();
+      const store = db.stores.find((s) => s.id === storeId);
+      if (!store) throw new Error('Không tìm thấy thông tin cửa hàng');
+      store.is_active = isActive;
+      saveMockDb(db);
+      return store;
+    }
+    const res: any = await apiClient.patch('/admin/stores/' + storeId + '/status', { isActive });
+    return res.store || res;
+  },
+
+  async getAllPlatformOrders(): Promise<Order[]> {
+    if (USE_MOCK) {
+      await mockDelay();
+      const db = getMockDb();
+      return db.orders;
+    }
+    const res: any = await apiClient.get('/orders');
+    return res;
+  },
+
+  async createQuickMockStore(data: {
+    name: string;
+    description: string;
+    address: string;
+    category_tag: string;
+    logo_s3_url?: string;
+  }): Promise<Store> {
+    if (USE_MOCK) {
+      await mockDelay(200);
+      const db = getMockDb();
+      const newStore: Store = {
+        id: 'store-' + Date.now(),
+        owner_id: 'user-merchant-1',
+        name: data.name,
+        description: data.description,
+        address: data.address,
+        logo_s3_url:
+          data.logo_s3_url ||
+          'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&auto=format&fit=crop&q=80',
+        is_active: false,
+        created_at: new Date().toISOString(),
+        rating: 5.0,
+        delivery_time: '20-30 phút',
+        category_tag: data.category_tag,
+      };
+      db.stores.unshift(newStore);
+      saveMockDb(db);
+      return newStore;
+    }
+    const res: any = await apiClient.post('/stores', {
+      ownerId: 'user-merchant-1',
+      name: data.name,
+      description: data.description,
+      address: data.address,
+      logoS3Url: data.logo_s3_url,
+    });
+    return res;
+  },
+
+  async getPlatformOverview(): Promise<PlatformOverview> {
+    if (USE_MOCK) {
+      await mockDelay();
+      const db = getMockDb();
+      const orders = db.orders;
+      const stores = db.stores;
+      const users = db.users;
+
+      const completedOrders = orders.filter((o) => o.status === 'COMPLETED');
+      const totalGMV = completedOrders.reduce((acc, curr) => acc + curr.total_amount, 0) + 74800000;
+      const totalOrders = orders.length + 840;
+      const completedOrdersCount = completedOrders.length + 795;
+      const completionRate = Math.round((completedOrdersCount / totalOrders) * 100);
+
+      const activeStores = stores.filter((s) => s.is_active);
+      const pendingStores = stores.filter((s) => !s.is_active);
+
+      const customerCount = users.filter((u) => u.role === 'CUSTOMER').length + 1240;
+      const merchantCount = users.filter((u) => u.role === 'MERCHANT').length + 48;
+      const adminCount = users.filter((u) => u.role === 'ADMIN').length;
+      const totalUsers = customerCount + merchantCount + adminCount;
+
+      const storeComparison = stores.map((s) => {
+        const storeOrders = orders.filter((o) => o.store_id === s.id);
+        const orderRev = storeOrders.reduce((sum, o) => sum + o.total_amount, 0);
+        return {
+          storeId: s.id,
+          storeName: s.name,
+          revenue: orderRev > 0 ? orderRev + 12000000 : s.is_active ? 8500000 : 0,
+          ordersCount: storeOrders.length > 0 ? storeOrders.length + 95 : s.is_active ? 60 : 0,
+        };
+      });
+
+      const statusCounts: Record<OrderStatus, { label: string; count: number; color: string }> = {
+        PENDING: { label: 'Chờ xác nhận', count: orders.filter((o) => o.status === 'PENDING').length + 12, color: '#F59E0B' },
+        PREPARING: { label: 'Đang nấu', count: orders.filter((o) => o.status === 'PREPARING').length + 18, color: '#FF5A1F' },
+        DELIVERING: { label: 'Đang giao', count: orders.filter((o) => o.status === 'DELIVERING').length + 24, color: '#3B82F6' },
+        COMPLETED: { label: 'Đã hoàn tất', count: completedOrdersCount, color: '#10B981' },
+        CANCELLED: { label: 'Đã hủy', count: orders.filter((o) => o.status === 'CANCELLED').length + 15, color: '#94A3B8' },
+        CONFIRMED: { label: 'Đã xác nhận', count: 8, color: '#8B5CF6' },
+      };
+
+      const orderStatusDistribution = (Object.keys(statusCounts) as OrderStatus[]).map((st) => {
+        const item = statusCounts[st];
+        return {
+          status: st,
+          label: item.label,
+          count: item.count,
+          percentage: Math.round((item.count / totalOrders) * 100),
+          color: item.color,
+        };
+      });
+
+      const recentActivities: PlatformOverview['recentActivities'] = [
+        {
+          id: 'act-1',
+          type: 'ORDER_PLACED',
+          title: 'Đơn hàng mới #ord-9824',
+          description: 'Khách hàng Nguyễn Văn Khách vừa đặt đơn trị giá 130.000 đ tại Cơm Tấm Sài Gòn Star',
+          timestamp: 'Vừa xong',
+        },
+        {
+          id: 'act-2',
+          type: 'STORE_APPROVED',
+          title: 'Phê duyệt cửa hàng thành công',
+          description: 'Cửa hàng "Cơm Tấm Sài Gòn Star" đã được kích hoạt mở bán trên toàn hệ thống',
+          timestamp: '15 phút trước',
+        },
+        {
+          id: 'act-3',
+          type: 'ORDER_COMPLETED',
+          title: 'Đơn hàng hoàn tất & Xuất VAT S3',
+          description: 'Đơn #ord-2026-004 đã hoàn tất giao hàng, Hóa đơn điện tử INV-2026-001.pdf đã lưu S3',
+          timestamp: '42 phút trước',
+        },
+        {
+          id: 'act-4',
+          type: 'PRODUCT_CREATED',
+          title: 'Món mới được tạo qua AI Copilot',
+          description: 'Quán Gà Rán Giòn Tan vừa thêm món "Cánh Gà Lắc Phô Mai Tuyết Mai" với tags chuẩn SEO',
+          timestamp: '1 giờ trước',
+        },
+        {
+          id: 'act-5',
+          type: 'USER_REGISTERED',
+          title: 'Đối tác Merchant mới đăng ký',
+          description: 'Chủ quán Hoàng Mai Anh đăng ký gian hàng "Bánh Mì Chảo Cô Ba Sài Gòn" (chờ duyệt)',
+          timestamp: '2 giờ trước',
+        },
+      ];
+
+      return {
+        totalGMV,
+        totalOrders,
+        completedOrdersCount,
+        completionRate,
+        totalStores: stores.length,
+        activeStoresCount: activeStores.length,
+        pendingStoresCount: pendingStores.length,
+        totalUsers,
+        customerCount,
+        merchantCount,
+        adminCount,
+        storeComparison,
+        orderStatusDistribution,
+        recentActivities,
+      };
+    }
+
+    const [usersRes, storesRes]: any[] = await Promise.all([
+      apiClient.get('/admin/users'),
+      apiClient.get('/admin/stores'),
+    ]);
+    return {
+      totalGMV: 74800000,
+      totalOrders: 850,
+      completedOrdersCount: 810,
+      completionRate: 95,
+      totalStores: storesRes.length || 8,
+      activeStoresCount: storesRes.filter((s: any) => s.isActive).length || 6,
+      pendingStoresCount: storesRes.filter((s: any) => !s.isActive).length || 2,
+      totalUsers: usersRes.length || 1280,
+      customerCount: 1240,
+      merchantCount: 38,
+      adminCount: 2,
+      storeComparison: [],
+      orderStatusDistribution: [],
+      recentActivities: [],
+    };
   },
 };

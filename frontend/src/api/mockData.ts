@@ -119,6 +119,32 @@ export const initialMockData: MockDatabase = {
       delivery_time: '20-30 phút',
       category_tag: 'Bún đậu mắm tôm',
     },
+    {
+      id: 'store-7',
+      owner_id: 'user-merchant-2',
+      name: 'Mì Cay Seoul 7 Cấp Độ',
+      description: 'Mì cay chuẩn vị Hàn Quốc nước súp kim chi đậm đà, tôm mực tươi sống, bắp bò Mỹ và xúc xích Đức. Quán đối tác mới đăng ký, đang chờ System Admin thẩm định.',
+      address: '320 Nguyễn Thị Thập, Phường Tân Quy, Quận 7, TP.HCM',
+      logo_s3_url: 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=800&auto=format&fit=crop&q=80',
+      is_active: false,
+      created_at: '2026-02-26T08:30:00Z',
+      rating: 5.0,
+      delivery_time: '20-30 phút',
+      category_tag: 'Mì cay',
+    },
+    {
+      id: 'store-8',
+      owner_id: 'user-merchant-3',
+      name: 'Bánh Mì Chảo Cô Ba Sài Gòn',
+      description: 'Chảo bánh mì xèo xèo pate béo ngậy gia truyền, xíu mại sốt cà chua, trứng ốp la lòng đào và phô mai kéo sợi thơm lừng. Đang chờ phê duyệt mở quán.',
+      address: '52 Cao Thắng, Phường 5, Quận 3, TP.HCM',
+      logo_s3_url: 'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?w=800&auto=format&fit=crop&q=80',
+      is_active: false,
+      created_at: '2026-02-27T09:15:00Z',
+      rating: 5.0,
+      delivery_time: '15-25 phút',
+      category_tag: 'Bánh mì & Ăn sáng',
+    },
   ],
 
   categories: [
@@ -639,7 +665,16 @@ export function getMockDb(): MockDatabase {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(initialMockData));
       return initialMockData;
     }
-    return JSON.parse(raw) as MockDatabase;
+    const parsed = JSON.parse(raw) as MockDatabase;
+    // Tự động đồng bộ các cửa hàng chờ duyệt store-7 & store-8 nếu chưa có trong LocalStorage
+    if (parsed.stores && !parsed.stores.some((s) => s.id === 'store-7')) {
+      const pending7 = initialMockData.stores.find((s) => s.id === 'store-7');
+      const pending8 = initialMockData.stores.find((s) => s.id === 'store-8');
+      if (pending7) parsed.stores.push(pending7);
+      if (pending8) parsed.stores.push(pending8);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+    }
+    return parsed;
   } catch (err) {
     console.error('Error reading mock DB from localStorage:', err);
     return initialMockData;

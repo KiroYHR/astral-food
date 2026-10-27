@@ -210,3 +210,45 @@ export interface AICopilotResponse {
     max: number;
   };
 }
+/**
+ * 8. PlatformOverview - Dữ liệu giám sát toàn sàn cho System Admin Portal (Phase 4)
+ */
+export interface PlatformStoreComparison {
+  storeId: string;
+  storeName: string;
+  revenue: number;
+  ordersCount: number;
+}
+
+export interface PlatformStatusDistribution {
+  status: OrderStatus;
+  label: string;
+  count: number;
+  percentage: number;
+  color: string;
+}
+
+export interface PlatformActivityLog {
+  id: string;
+  type: 'ORDER_PLACED' | 'STORE_APPROVED' | 'STORE_LOCKED' | 'PRODUCT_CREATED' | 'ORDER_COMPLETED' | 'USER_REGISTERED';
+  title: string;
+  description: string;
+  timestamp: string;
+}
+
+export interface PlatformOverview {
+  totalGMV: number;
+  totalOrders: number;
+  completedOrdersCount: number;
+  completionRate: number;
+  totalStores: number;
+  activeStoresCount: number;
+  pendingStoresCount: number;
+  totalUsers: number;
+  customerCount: number;
+  merchantCount: number;
+  adminCount: number;
+  storeComparison: PlatformStoreComparison[];
+  orderStatusDistribution: PlatformStatusDistribution[];
+  recentActivities: PlatformActivityLog[];
+}
