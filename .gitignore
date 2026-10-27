@@ -1,0 +1,34 @@
+# Bảo mật AWS & Biến mới trường (Tuyệt đối không commit)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*credentials*
+aws-exports.js
+.aws-sam/
+
+# Frontend (React + Vite - Thành viên 3)
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+*.local
+
+# Backend & Lambda (TV1 & TV2)
+backend/node_modules/
+backend/dist/
+lambda-workers/node_modules/
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+env/
+
+# IDE & OS
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.log
