@@ -1,0 +1,110 @@
+﻿@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* AstralFood Solar Starburst Color Tokens */
+  --color-astral-bg: #FFFDF9;
+  --color-astral-surface: #FFFFFF;
+
+  /* Primary: Astral Coral */
+  --color-astral-coral: #FF5A1F;
+  --color-astral-coral-50: #FFF3EC;
+  --color-astral-coral-100: #FFE4D6;
+  --color-astral-coral-200: #FFC4A8;
+  --color-astral-coral-300: #FFA075;
+  --color-astral-coral-400: #FF7B42;
+  --color-astral-coral-500: #FF5A1F;
+  --color-astral-coral-600: #E6440B;
+  --color-astral-coral-700: #B83004;
+  --color-astral-coral-800: #932607;
+  --color-astral-coral-900: #78220A;
+
+  /* Accent: Starlight Gold (Star rating & AI Copilot) */
+  --color-starlight-gold: #F59E0B;
+  --color-starlight-gold-light: #FEF3C7;
+  --color-starlight-gold-dark: #B45309;
+
+  /* Status: Fresh Mint (In-stock / Completed) */
+  --color-fresh-mint: #10B981;
+  --color-fresh-mint-light: #D1FAE5;
+  --color-fresh-mint-dark: #047857;
+
+  /* Neutral & Dark Accents */
+  --color-astral-navy: #0F172A;
+  --color-astral-muted: #64748B;
+  --color-astral-border: #F1EFE9;
+
+  /* Soft and Depth Shadows */
+  --shadow-astral-soft: 0 4px 20px -2px rgba(255, 90, 31, 0.08), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+  --shadow-astral-card: 0 10px 30px -4px rgba(15, 23, 42, 0.06), 0 4px 12px -2px rgba(15, 23, 42, 0.03);
+  --shadow-astral-hover: 0 20px 35px -6px rgba(255, 90, 31, 0.16), 0 8px 16px -4px rgba(15, 23, 42, 0.06);
+}
+
+@layer base {
+  * {
+    border-color: #F1EFE9;
+  }
+
+  html {
+    font-family: var(--font-sans);
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: #FFFDF9;
+    color: #1E293B;
+    min-height: 100vh;
+  }
+}
+
+/* Solar Starburst Gradients & Utility Classes */
+.bg-coral-gradient {
+  background: linear-gradient(135deg, #FF5A1F 0%, #EA580C 50%, #F43F5E 100%);
+}
+
+.text-coral-gradient {
+  background: linear-gradient(135deg, #FF5A1F 0%, #EA580C 50%, #F43F5E 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.bg-gold-gradient {
+  background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+}
+
+.bg-mint-gradient {
+  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+}
+
+.card-astral {
+  background-color: #FFFFFF;
+  border-radius: 1rem;
+  border: 1px solid rgba(241, 239, 233, 0.9);
+  box-shadow: 0 10px 30px -4px rgba(15, 23, 42, 0.06), 0 4px 12px -2px rgba(15, 23, 42, 0.03);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-astral:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 35px -6px rgba(255, 90, 31, 0.14), 0 8px 16px -4px rgba(15, 23, 42, 0.06);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #FFFDF9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #E2E8F0;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #CBD5E1;
+}
