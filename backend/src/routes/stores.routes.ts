@@ -221,3 +221,26 @@ storesRouter.delete('/products/:productId', async (req: Request, res: Response) 
     return res.status(500).json({ error: 'Không thể xóa món ăn.' });
   }
 });
+
+// Hỗ trợ cả POST /api/v1/categories trực tiếp theo API Contract của TV3
+storesRouter.post('/categories', async (req: Request, res: Response) => {
+  try {
+    const { storeId, name, displayOrder } = req.body;
+    if (!storeId || !name) {
+      return res.status(400).json({ error: 'storeId và name là bắt buộc.' });
+    }
+
+    const category = await prisma.category.create({
+      data: {
+        storeId,
+        name,
+        displayOrder: displayOrder || 0,
+      },
+    });
+
+    return res.status(201).json(category);
+  } catch (error) {
+    console.error('[CATEGORY CREATE ERROR]', error);
+    return res.status(500).json({ error: 'Không thể tạo danh mục mới.' });
+  }
+});

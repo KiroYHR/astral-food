@@ -84,3 +84,46 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     return res.status(500).json({ error: 'Đã xảy ra lỗi khi đăng nhập.' });
   }
 });
+
+// Lấy thông tin user đang đăng nhập (GET /api/v1/users/me & /api/v1/auth/me)
+authRouter.get('/me', async (req: Request, res: Response) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Chưa cung cấp token xác thực.' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, config.jwtSecret) as { sub: string; role: string };
+
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.sub },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        phone: true,
+        role: true,
+        createdAt: true,
+        stores: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            logoS3Url: true,
+            rating: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'Không tìm thấy người dùng.' });
+    }
+
+    return res.json(user);
+  } catch (error) {
+    return res.status(401).json({ error: 'Token không hợp lệ hoặc đã hết hạn.' });
+  }
+});

@@ -32,3 +32,8 @@ Thumbs.db
 !.vscode/extensions.json
 .idea/
 *.log
+
+# Báo cáo tiến độ & Lịch sử cá nhân (Không đưa lên Git)
+*BAO_CAO*
+*TIEN_DO*
+*LICH_SU*
