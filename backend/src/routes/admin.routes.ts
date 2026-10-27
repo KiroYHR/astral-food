@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../prisma.js';
+import { serializeUser, serializeStore } from '../utils/serializer.js';
 
 export const adminRouter = Router();
 
@@ -20,7 +21,7 @@ adminRouter.get('/users', async (req: Request, res: Response) => {
       },
       orderBy: { createdAt: 'desc' },
     });
-    return res.json(users);
+    return res.json(users.map(serializeUser));
   } catch (error) {
     console.error('[ADMIN USERS ERROR]', error);
     return res.status(500).json({ error: 'Không thể tải danh sách người dùng.' });
@@ -41,7 +42,7 @@ adminRouter.get('/stores', async (req: Request, res: Response) => {
       },
       orderBy: { createdAt: 'desc' },
     });
-    return res.json(stores);
+    return res.json(stores.map(serializeStore));
   } catch (error) {
     console.error('[ADMIN STORES ERROR]', error);
     return res.status(500).json({ error: 'Không thể tải danh sách cửa hàng.' });
@@ -52,15 +53,16 @@ adminRouter.get('/stores', async (req: Request, res: Response) => {
 adminRouter.patch('/stores/:id/status', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { isActive } = req.body;
+    const { isActive, is_active } = req.body;
+    const activeVal = isActive !== undefined ? isActive : is_active;
 
-    if (typeof isActive !== 'boolean') {
+    if (typeof activeVal !== 'boolean') {
       return res.status(400).json({ error: 'Trường isActive (boolean) là bắt buộc.' });
     }
 
     const updatedStore = await prisma.store.update({
       where: { id },
-      data: { isActive },
+      data: { isActive: activeVal },
       include: {
         owner: {
           select: { id: true, fullName: true, email: true },
@@ -70,8 +72,8 @@ adminRouter.patch('/stores/:id/status', async (req: Request, res: Response) => {
 
     return res.json({
       success: true,
-      message: isActive ? 'Đã phê duyệt mở cửa hàng thành công.' : 'Đã tạm dừng/khóa cửa hàng.',
-      store: updatedStore,
+      message: activeVal ? 'Đã phê duyệt mở cửa hàng thành công.' : 'Đã tạm dừng/khóa cửa hàng.',
+      store: serializeStore(updatedStore),
     });
   } catch (error) {
     console.error('[ADMIN STORE STATUS ERROR]', error);
