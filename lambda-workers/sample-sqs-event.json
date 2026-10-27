@@ -1,0 +1,27 @@
+{
+  "Records": [
+    {
+      "messageId": "msg-sqs-test-001",
+      "receiptHandle": "handle-001",
+      "body": "{\"orderId\":\"ord-test-sample-01\",\"customerId\":\"cust-01\",\"customerName\":\"Nguyen Van B\",\"customerEmail\":\"nguyenvanb@example.com\",\"storeId\":\"store-01\",\"storeName\":\"Tra Sua AstralFood\",\"totalAmount\":120000,\"discountAmount\":20000,\"voucherCode\":\"ASTRAL20\",\"deliveryAddress\":\"123 Le Loi, Quan 1, TP.HCM\",\"note\":\"Giao gio hanh chinh\",\"items\":[{\"productId\":\"prod-01\",\"productName\":\"Tra Sua Nuong Astral\",\"quantity\":2,\"unitPrice\":50000,\"subtotal\":100000},{\"productId\":\"prod-02\",\"productName\":\"Pudding Trung\",\"quantity\":2,\"unitPrice\":10000,\"subtotal\":20000}],\"createdAt\":\"2026-10-27T10:00:00.000Z\"}",
+      "attributes": {
+        "ApproximateReceiveCount": "1",
+        "SentTimestamp": "1730000000000",
+        "SenderId": "AROAEXAMPLE",
+        "ApproximateFirstReceiveTimestamp": "1730000000001"
+      },
+      "messageAttributes": {
+        "EventType": {
+          "stringValue": "ORDER_CREATED",
+          "stringListValues": [],
+          "binaryListValues": [],
+          "dataType": "String"
+        }
+      },
+      "md5OfBody": "test-md5",
+      "eventSource": "aws:sqs",
+      "eventSourceARN": "arn:aws:sqs:ap-southeast-1:123456789012:astralfood-orders-queue",
+      "awsRegion": "ap-southeast-1"
+    }
+  ]
+}
