@@ -94,7 +94,7 @@ export const authService = {
         return JSON.parse(rawUser);
       }
       const db = getMockDb();
-      return db.users[0]; // Mặc định là tài khoản customer đầu tiên
+      return db.users[0];
     }
     const res: any = await apiClient.get('/users/me');
     return res;
@@ -129,6 +129,16 @@ export const storeService = {
     return res;
   },
 
+  async getAllStores(): Promise<Store[]> {
+    if (USE_MOCK) {
+      await mockDelay(100);
+      const db = getMockDb();
+      return db.stores;
+    }
+    const res: any = await apiClient.get('/stores');
+    return res;
+  },
+
   async getStoreById(id: string): Promise<Store> {
     if (USE_MOCK) {
       await mockDelay();
@@ -141,14 +151,15 @@ export const storeService = {
     return res;
   },
 
-  async getMyStore(): Promise<Store> {
+  async getMyStore(ownerId?: string): Promise<Store> {
     if (USE_MOCK) {
       await mockDelay();
       const db = getMockDb();
-      const myStore = db.stores.find((s) => s.owner_id === 'user-merchant-1') || db.stores[0];
+      const targetOwnerId = ownerId || 'user-merchant-1';
+      const myStore = db.stores.find((s) => s.owner_id === targetOwnerId) || db.stores[0];
       return myStore;
     }
-    const res: any = await apiClient.get('/stores/me');
+    const res: any = await apiClient.get('/stores/me', { params: { ownerId } });
     return res;
   },
 
@@ -162,7 +173,13 @@ export const storeService = {
       saveMockDb(db);
       return db.stores[index];
     }
-    const res: any = await apiClient.put(`/stores/${id}`, data);
+    const res: any = await apiClient.put(`/stores/${id}`, {
+      ...(data.name && { name: data.name }),
+      ...(data.description !== undefined && { description: data.description }),
+      ...(data.address && { address: data.address }),
+      ...(data.logo_s3_url !== undefined && { logoS3Url: data.logo_s3_url }),
+      ...(data.is_active !== undefined && { isActive: data.is_active }),
+    });
     return res;
   },
 
@@ -184,13 +201,13 @@ export const storeService = {
         id: `cat-${Date.now()}`,
         store_id: storeId,
         name,
-        display_order: db.categories.length + 1,
+        display_order: db.categories.filter((c) => c.store_id === storeId).length + 1,
       };
       db.categories.push(newCat);
       saveMockDb(db);
       return newCat;
     }
-    const res: any = await apiClient.post('/categories', { store_id: storeId, name });
+    const res: any = await apiClient.post(`/stores/${storeId}/categories`, { name });
     return res;
   },
 };
@@ -222,7 +239,14 @@ export const productService = {
       saveMockDb(db);
       return newProduct;
     }
-    const res: any = await apiClient.post('/products', data);
+    const res: any = await apiClient.post('/stores/products', {
+      storeId: data.store_id,
+      categoryId: data.category_id,
+      name: data.name,
+      description: data.description,
+      price: data.price,
+      imageS3Url: data.image_s3_url,
+    });
     return res;
   },
 
@@ -236,21 +260,30 @@ export const productService = {
       saveMockDb(db);
       return db.products[index];
     }
-    const res: any = await apiClient.patch(`/products/${id}`, data);
+    const res: any = await apiClient.patch(`/stores/products/${id}`, {
+      ...(data.name && { name: data.name }),
+      ...(data.description !== undefined && { description: data.description }),
+      ...(data.price !== undefined && { price: data.price }),
+      ...(data.image_s3_url !== undefined && { imageS3Url: data.image_s3_url }),
+      ...(data.is_available !== undefined && { isAvailable: data.is_available }),
+      ...(data.category_id !== undefined && { categoryId: data.category_id }),
+    });
     return res;
   },
 
-  async toggleProductAvailability(id: string): Promise<Product> {
+  async toggleProductAvailability(id: string, explicitStatus?: boolean): Promise<Product> {
     if (USE_MOCK) {
       await mockDelay(100);
       const db = getMockDb();
       const product = db.products.find((p) => p.id === id);
       if (!product) throw new Error('Không tìm thấy món ăn');
-      product.is_available = !product.is_available;
+      product.is_available = explicitStatus !== undefined ? explicitStatus : !product.is_available;
       saveMockDb(db);
       return product;
     }
-    const res: any = await apiClient.patch(`/products/${id}/availability`);
+    const res: any = await apiClient.patch(`/stores/products/${id}`, {
+      isAvailable: explicitStatus,
+    });
     return res;
   },
 
@@ -262,7 +295,7 @@ export const productService = {
       saveMockDb(db);
       return { success: true };
     }
-    const res: any = await apiClient.delete(`/products/${id}`);
+    const res: any = await apiClient.delete(`/stores/products/${id}`);
     return res;
   },
 };
@@ -282,13 +315,17 @@ export const mediaService = {
       };
     }
     const res: any = await apiClient.post('/media/presigned-url', { fileName, fileType });
-    return res;
+    return {
+      upload_url: res.uploadUrl || res.upload_url,
+      file_url: res.finalS3Url || res.fileUrl || res.file_url,
+      file_key: res.fileKey || res.file_key,
+    };
   },
 
   async uploadFileToS3(file: File): Promise<string> {
     const { upload_url, file_url } = await this.getPresignedUrl(file.name, file.type);
     if (USE_MOCK) {
-      await mockDelay(400);
+      await mockDelay(300);
       return URL.createObjectURL(file);
     }
     await apiClient.put(upload_url, file, {
@@ -299,25 +336,25 @@ export const mediaService = {
 };
 
 // ==========================================
-// 5. AI COPILOT SERVICE (Bedrock / Gemini)
+// 5. AI COPILOT SERVICE (Gemini / Bedrock)
 // ==========================================
 export const aiCopilotService = {
   async generateDescription(
     dishName: string,
     categoryName: string,
-    keywords?: string[]
+    keywords?: string[] | string
   ): Promise<AICopilotResponse> {
     if (USE_MOCK) {
       await mockDelay(600);
-      const kwString = keywords && keywords.length > 0 ? keywords.join(', ') : 'tươi ngon, đậm vị';
+      const kwString = Array.isArray(keywords) && keywords.length > 0 ? keywords.join(', ') : (keywords || 'tươi ngon, đậm vị');
       return {
-        generated_description: `${dishName} là sự kết hợp tinh tế giữa nguyên liệu thượng hạng và công thức ướp bí truyền. Món ăn thuộc danh mục ${categoryName}, ghi điểm với hương vị thơm nức, màu sắc vàng óng cuốn hút (${kwString}). Lựa chọn hoàn hảo để kích thích vị giác của mọi thực khách sành ăn!`,
+        generated_description: `${dishName} là sự kết hợp tinh tế giữa nguyên liệu tươi ngon thượng hạng và công thức chế biến độc quyền của quán. Từng phần ăn thuộc danh mục ${categoryName} mang hương vị đậm đà, màu sắc vàng óng cuốn hút (${kwString}). Món ăn chuẩn vị, giữ trọn độ nóng sốt và kích thích vị giác tuyệt đối!`,
         suggested_tags: [
-          dishName.toLowerCase(),
-          categoryName.toLowerCase(),
-          'món ngon astral',
-          'bán chạy',
-          'chuẩn vị sài gòn',
+          'Best Seller',
+          'Đậm đà',
+          'Chuẩn vị',
+          'Nóng hổi',
+          'Món ngon gợi ý',
         ],
         suggested_price_range: {
           min: 45000,
@@ -325,12 +362,18 @@ export const aiCopilotService = {
         },
       };
     }
+    const kwString = Array.isArray(keywords) ? keywords.join(', ') : (keywords || categoryName);
     const res: any = await apiClient.post('/ai/generate-description', {
-      dish_name: dishName,
-      category_name: categoryName,
-      keywords,
+      productName: dishName,
+      keywords: kwString,
     });
-    return res;
+    const desc = res.generated_description || res.description || '';
+    const tags = res.suggested_tags || res.suggestedTags || ['Best Seller', 'Đậm đà', 'Chuẩn vị'];
+    return {
+      generated_description: desc,
+      suggested_tags: tags,
+      suggested_price_range: res.suggested_price_range || { min: 45000, max: 85000 },
+    };
   },
 };
 
@@ -414,7 +457,7 @@ export const orderService = {
       }
       return orders;
     }
-    const res: any = await apiClient.get(`/stores/${storeId}/orders`, { params: { status } });
+    const res: any = await apiClient.get(`/orders/stores/${storeId}/orders`, { params: { status } });
     return res;
   },
 
@@ -435,14 +478,66 @@ export const orderService = {
     return res;
   },
 
-  async getStoreAnalytics(storeId: string): Promise<StoreAnalytics> {
+  async getStoreAnalytics(storeId: string, period?: '7days' | '30days' | 'month'): Promise<StoreAnalytics> {
     if (USE_MOCK) {
       await mockDelay();
       const db = getMockDb();
-      const analytics = db.analytics[storeId] || db.analytics['store-1'];
-      return analytics;
+      const storeOrders = db.orders.filter((o) => o.store_id === storeId);
+      const completedOrders = storeOrders.filter((o) => o.status === 'COMPLETED');
+      const baseAnalytics = db.analytics[storeId] || db.analytics['store-1'] || {
+        storeId,
+        period: 'day',
+        totalRevenue: 24850000,
+        totalOrders: 326,
+        averageOrderValue: 76200,
+        revenueChart: [],
+        topSellingProducts: [],
+      };
+
+      const extraRevenue = completedOrders.reduce((acc, curr) => acc + curr.total_amount, 0);
+      const extraOrders = completedOrders.length;
+
+      let chart = [...baseAnalytics.revenueChart];
+      if (period === '30days') {
+        chart = [
+          { time: 'Tuần 1', revenue: 6800000, ordersCount: 95 },
+          { time: 'Tuần 2', revenue: 8200000, ordersCount: 110 },
+          { time: 'Tuần 3', revenue: 7900000, ordersCount: 104 },
+          { time: 'Tuần 4', revenue: 9400000, ordersCount: 125 },
+        ];
+      } else if (period === 'month') {
+        chart = [
+          { time: 'Tháng 11', revenue: 32000000, ordersCount: 420 },
+          { time: 'Tháng 12', revenue: 45000000, ordersCount: 580 },
+          { time: 'Tháng 1', revenue: 38000000, ordersCount: 510 },
+          { time: 'Tháng 2', revenue: 42000000, ordersCount: 550 },
+        ];
+      }
+
+      const storeProducts = db.products.filter((p) => p.store_id === storeId);
+      let topProducts = baseAnalytics.topSellingProducts;
+      if (storeProducts.length > 0 && (!topProducts || topProducts.length === 0 || topProducts[0].productId.slice(0, 6) !== storeId.slice(0, 6))) {
+        topProducts = storeProducts.slice(0, 5).map((p, idx) => ({
+          productId: p.id,
+          productName: p.name,
+          categoryName: 'Món chính',
+          quantitySold: 120 - idx * 22,
+          totalRevenue: (120 - idx * 22) * p.price,
+          image_s3_url: p.image_s3_url,
+        }));
+      }
+
+      return {
+        ...baseAnalytics,
+        storeId,
+        totalRevenue: baseAnalytics.totalRevenue + extraRevenue,
+        totalOrders: baseAnalytics.totalOrders + extraOrders,
+        averageOrderValue: Math.round((baseAnalytics.totalRevenue + extraRevenue) / Math.max(1, baseAnalytics.totalOrders + extraOrders)),
+        revenueChart: chart,
+        topSellingProducts: topProducts,
+      };
     }
-    const res: any = await apiClient.get(`/stores/${storeId}/analytics`);
+    const res: any = await apiClient.get(`/orders/stores/${storeId}/analytics`);
     return res;
   },
 };
@@ -460,40 +555,4 @@ export const adminService = {
     const res: any = await apiClient.get('/admin/users');
     return res;
   },
-
-  async getStores(): Promise<Store[]> {
-    if (USE_MOCK) {
-      await mockDelay();
-      const db = getMockDb();
-      return db.stores;
-    }
-    const res: any = await apiClient.get('/admin/stores');
-    return res;
-  },
-
-  async toggleStoreStatus(storeId: string, isActive: boolean): Promise<Store> {
-    if (USE_MOCK) {
-      await mockDelay();
-      const db = getMockDb();
-      const store = db.stores.find((s) => s.id === storeId);
-      if (!store) throw new Error('Không tìm thấy cửa hàng');
-      store.is_active = isActive;
-      saveMockDb(db);
-      return store;
-    }
-    const res: any = await apiClient.patch(`/admin/stores/${storeId}/status`, { is_active: isActive });
-    return res;
-  },
 };
-
-export const api = {
-  auth: authService,
-  store: storeService,
-  product: productService,
-  media: mediaService,
-  aiCopilot: aiCopilotService,
-  order: orderService,
-  admin: adminService,
-};
-
-export default api;

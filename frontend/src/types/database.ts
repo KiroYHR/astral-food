@@ -191,6 +191,10 @@ export interface PresignedUrlResponse {
   upload_url: string;
   file_url: string;
   file_key: string;
+  uploadUrl?: string;
+  fileUrl?: string;
+  finalS3Url?: string;
+  fileKey?: string;
 }
 
 /**
@@ -199,6 +203,8 @@ export interface PresignedUrlResponse {
 export interface AICopilotResponse {
   generated_description: string;
   suggested_tags: string[];
+  description?: string;
+  suggestedTags?: string[];
   suggested_price_range?: {
     min: number;
     max: number;
