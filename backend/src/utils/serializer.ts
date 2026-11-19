@@ -123,6 +123,7 @@ export function serializeOrder(order: any) {
     deliveryAddress: order.deliveryAddress || order.delivery_address || '268 Lý Thường Kiệt, Q10',
     note: order.note || '',
     invoice_s3_url: order.invoiceS3Url || order.invoice_s3_url || '',
+    invoiceS3Url: order.invoiceS3Url || order.invoice_s3_url || '',
     created_at: order.createdAt || order.created_at || new Date().toISOString(),
     createdAt: order.createdAt || order.created_at || new Date().toISOString(),
     items,

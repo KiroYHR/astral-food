@@ -16,9 +16,20 @@ function getSQSClient(): SQSClient {
   });
 }
 
-export async function sendOrderEventToSQS(orderData: Record<string, any>): Promise<boolean> {
-  if (!config.aws.sqsOrderQueueUrl) {
-    console.log(`[LOCAL MOCK SQS] Đã đẩy event đơn hàng vào hàng đợi giả lập: ${orderData.id}`);
+export type OrderSQSEventType = 'ORDER_CREATED' | 'ORDER_STATUS_UPDATED';
+
+export async function sendOrderEventToSQS(
+  orderData: Record<string, any>,
+  eventType: OrderSQSEventType = 'ORDER_CREATED'
+): Promise<boolean> {
+  const orderId = orderData.orderId || orderData.id || 'unknown';
+  const payload = {
+    ...orderData,
+    eventType: orderData.eventType || eventType,
+  };
+
+  if (process.env.LOCAL_SIMULATION === 'true' || !config.aws.sqsOrderQueueUrl) {
+    console.log(`[LOCAL MOCK SQS] Đã đẩy event ${payload.eventType} vào hàng đợi giả lập: ${orderId}`);
     return true;
   }
 
@@ -26,11 +37,11 @@ export async function sendOrderEventToSQS(orderData: Record<string, any>): Promi
     const client = getSQSClient();
     const command = new SendMessageCommand({
       QueueUrl: config.aws.sqsOrderQueueUrl,
-      MessageBody: JSON.stringify(orderData),
+      MessageBody: JSON.stringify(payload),
       MessageAttributes: {
         EventType: {
           DataType: 'String',
-          StringValue: 'ORDER_CREATED',
+          StringValue: payload.eventType,
         },
       },
     });

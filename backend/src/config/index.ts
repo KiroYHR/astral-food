@@ -13,8 +13,11 @@ export const config = {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
     s3BucketMedia: process.env.S3_BUCKET_MEDIA || 'cloudbite-media',
+    s3BucketInvoices:
+      process.env.INVOICE_S3_BUCKET || process.env.S3_BUCKET_INVOICES || 'astralfood-invoices',
     s3PresignedExpires: parseInt(process.env.S3_PRESIGNED_EXPIRES || '300', 10),
-    sqsOrderQueueUrl: process.env.SQS_ORDER_QUEUE_URL || '',
+    sqsOrderQueueUrl:
+      process.env.SQS_ORDER_QUEUE_URL || process.env.AWS_ORDER_SQS_QUEUE_URL || '',
   },
 
   ai: {
