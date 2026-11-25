@@ -43,6 +43,19 @@ export function serializeProduct(prod: any) {
   };
 }
 
+function inferCategoryTag(store: any): string {
+  if (store.category_tag) return store.category_tag;
+  const text = `${store.name || ''} ${store.description || ''}`.toLowerCase();
+  const tags: string[] = [];
+  if (text.includes('cơm tấm') || text.includes('com tam')) tags.push('Cơm tấm');
+  if (text.includes('trà sữa') || text.includes('phúc long') || text.includes('cafe') || text.includes('cà phê')) tags.push('Trà sữa & Cafe');
+  if (text.includes('gà rán') || text.includes('popeyes') || text.includes('burger')) tags.push('Gà rán & Burger');
+  if (text.includes('phở') || text.includes('bún bò') || text.includes('hủ tiếu')) tags.push('Phở & Bún');
+  if (text.includes('bún đậu') || text.includes('cuốn') || text.includes('gỏi cuốn')) tags.push('Món cuốn, Bún đậu & Cuốn');
+  if (text.includes('bakery') || text.includes('bánh') || text.includes('ăn vặt') || text.includes('tráng miệng')) tags.push('Ăn vặt');
+  return tags.length > 0 ? tags.join(', ') : 'Trà sữa & Cafe, Ăn vặt';
+}
+
 export function serializeStore(store: any) {
   if (!store) return null;
   const logoUrl =
@@ -61,7 +74,7 @@ export function serializeStore(store: any) {
     logoS3Url: logoUrl,
     rating: Number(store.rating) || 4.9,
     delivery_time: store.delivery_time || '20-30 phút',
-    category_tag: store.category_tag || 'Trà sữa & Cafe, Cơm tấm, Gà rán, Ăn vặt',
+    category_tag: inferCategoryTag(store),
     is_active: store.isActive !== undefined ? store.isActive : (store.is_active !== undefined ? store.is_active : true),
     isActive: store.isActive !== undefined ? store.isActive : (store.is_active !== undefined ? store.is_active : true),
     created_at: store.createdAt || store.created_at || new Date().toISOString(),
