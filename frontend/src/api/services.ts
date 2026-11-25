@@ -1,4 +1,5 @@
-﻿import apiClient from './client';
+import axios from 'axios';
+import apiClient from './client';
 import { getMockDb, saveMockDb } from './mockData';
 import type {
   User,
@@ -329,7 +330,7 @@ export const mediaService = {
       await mockDelay(300);
       return URL.createObjectURL(file);
     }
-    await apiClient.put(upload_url, file, {
+    await axios.put(upload_url, file, {
       headers: { 'Content-Type': file.type },
     });
     return file_url;
@@ -538,7 +539,9 @@ export const orderService = {
         topSellingProducts: topProducts,
       };
     }
-    const res: any = await apiClient.get(`/orders/stores/${storeId}/analytics`);
+    const res: any = await apiClient.get(`/orders/stores/${storeId}/analytics`, {
+      params: { period },
+    });
     return res;
   },
 };
