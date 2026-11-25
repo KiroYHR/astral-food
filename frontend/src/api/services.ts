@@ -647,8 +647,10 @@ export const adminService = {
       saveMockDb(db);
       return newStore;
     }
+    const users = await this.getUsers();
+    const merchantOwner = users.find((u) => u.role === 'MERCHANT') || users[0];
     const res: any = await apiClient.post('/stores', {
-      ownerId: 'user-merchant-1',
+      ownerId: merchantOwner?.id,
       name: data.name,
       description: data.description,
       address: data.address,
@@ -766,25 +768,105 @@ export const adminService = {
       };
     }
 
-    const [usersRes, storesRes]: any[] = await Promise.all([
+    const [usersRes, storesRes, ordersRes]: any[] = await Promise.all([
       apiClient.get('/admin/users'),
       apiClient.get('/admin/stores'),
+      apiClient.get('/orders'),
     ]);
+
+    const users: any[] = Array.isArray(usersRes) ? usersRes : [];
+    const stores: any[] = Array.isArray(storesRes) ? storesRes : [];
+    const orders: any[] = Array.isArray(ordersRes) ? ordersRes : [];
+
+    const completedOrders = orders.filter((o) => o.status === 'COMPLETED');
+    const totalGMV = completedOrders.reduce(
+      (acc, curr) => acc + Number(curr.total_amount ?? curr.totalAmount ?? 0),
+      0
+    );
+    const totalOrders = orders.length;
+    const completedOrdersCount = completedOrders.length;
+    const completionRate = totalOrders > 0 ? Math.round((completedOrdersCount / totalOrders) * 100) : 0;
+
+    const activeStoresCount = stores.filter((s) => Boolean(s.is_active ?? s.isActive)).length;
+    const pendingStoresCount = stores.length - activeStoresCount;
+
+    const customerCount = users.filter((u) => u.role === 'CUSTOMER').length;
+    const merchantCount = users.filter((u) => u.role === 'MERCHANT').length;
+    const adminCount = users.filter((u) => u.role === 'ADMIN').length;
+
+    const storeComparison = stores.map((s) => {
+      const storeOrders = orders.filter((o) => (o.store_id ?? o.storeId) === s.id);
+      const revenue = storeOrders.reduce(
+        (sum, o) => sum + Number(o.total_amount ?? o.totalAmount ?? 0),
+        0
+      );
+      return {
+        storeId: s.id,
+        storeName: s.name,
+        revenue,
+        ordersCount: storeOrders.length,
+      };
+    });
+
+    const statusMeta: Record<OrderStatus, { label: string; color: string }> = {
+      PENDING: { label: 'Chờ xác nhận', color: '#F59E0B' },
+      CONFIRMED: { label: 'Đã xác nhận', color: '#8B5CF6' },
+      PREPARING: { label: 'Đang nấu', color: '#FF5A1F' },
+      DELIVERING: { label: 'Đang giao', color: '#3B82F6' },
+      COMPLETED: { label: 'Đã hoàn tất', color: '#10B981' },
+      CANCELLED: { label: 'Đã hủy', color: '#94A3B8' },
+    };
+
+    const orderStatusDistribution = (Object.keys(statusMeta) as OrderStatus[]).map((st) => {
+      const count = orders.filter((o) => o.status === st).length;
+      return {
+        status: st,
+        label: statusMeta[st].label,
+        count,
+        percentage: totalOrders > 0 ? Math.round((count / totalOrders) * 100) : 0,
+        color: statusMeta[st].color,
+      };
+    });
+
+    const recentActivities: PlatformOverview['recentActivities'] = [...orders]
+      .sort(
+        (a, b) =>
+          new Date(b.created_at ?? b.createdAt ?? 0).getTime() -
+          new Date(a.created_at ?? a.createdAt ?? 0).getTime()
+      )
+      .slice(0, 5)
+      .map((o) => {
+        const amount = Number(o.total_amount ?? o.totalAmount ?? 0).toLocaleString('vi-VN');
+        const storeName = o.store_name || o.store?.name || 'Cửa hàng đối tác';
+        const customerName = o.customer_name || o.customer?.fullName || 'Khách hàng';
+        const createdAt = o.created_at ?? o.createdAt;
+        return {
+          id: `act-${o.id}`,
+          type: o.status === 'COMPLETED' ? 'ORDER_COMPLETED' : 'ORDER_PLACED',
+          title:
+            o.status === 'COMPLETED'
+              ? `Đơn #${String(o.id).slice(0, 8)} đã hoàn tất`
+              : `Đơn hàng #${String(o.id).slice(0, 8)} (${o.status})`,
+          description: `${customerName} đặt đơn ${amount} đ tại ${storeName}`,
+          timestamp: createdAt ? new Date(createdAt).toLocaleString('vi-VN') : 'Gần đây',
+        };
+      });
+
     return {
-      totalGMV: 74800000,
-      totalOrders: 850,
-      completedOrdersCount: 810,
-      completionRate: 95,
-      totalStores: storesRes.length || 8,
-      activeStoresCount: storesRes.filter((s: any) => s.isActive).length || 6,
-      pendingStoresCount: storesRes.filter((s: any) => !s.isActive).length || 2,
-      totalUsers: usersRes.length || 1280,
-      customerCount: 1240,
-      merchantCount: 38,
-      adminCount: 2,
-      storeComparison: [],
-      orderStatusDistribution: [],
-      recentActivities: [],
+      totalGMV,
+      totalOrders,
+      completedOrdersCount,
+      completionRate,
+      totalStores: stores.length,
+      activeStoresCount,
+      pendingStoresCount,
+      totalUsers: users.length,
+      customerCount,
+      merchantCount,
+      adminCount,
+      storeComparison,
+      orderStatusDistribution,
+      recentActivities,
     };
   },
 };
