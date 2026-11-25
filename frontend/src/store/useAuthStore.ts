@@ -1,7 +1,39 @@
-﻿import { create } from 'zustand';
-import type { User, UserRole } from '../types';
-import { getMockDb } from '../api/mockData';
+import { create } from 'zustand';
+import type { User } from '../types';
 import { authService } from '../api/services';
+
+const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false';
+
+interface StoredAuthSnapshot {
+  user: User | null;
+  token: string | null;
+  isAuthenticated: boolean;
+}
+
+const readStoredAuth = (): StoredAuthSnapshot => {
+  try {
+    const storedUser = localStorage.getItem('astral_user');
+    const storedToken = localStorage.getItem('astral_token');
+
+    if (!storedUser || !storedToken) {
+      return { user: null, token: null, isAuthenticated: false };
+    }
+
+    if (!USE_MOCK && storedToken.startsWith('mock-')) {
+      localStorage.removeItem('astral_user');
+      localStorage.removeItem('astral_token');
+      return { user: null, token: null, isAuthenticated: false };
+    }
+
+    const user = JSON.parse(storedUser) as User;
+    return { user, token: storedToken, isAuthenticated: true };
+  } catch (e) {
+    console.error('Lỗi khi đọc auth từ localStorage:', e);
+    localStorage.removeItem('astral_user');
+    localStorage.removeItem('astral_token');
+    return { user: null, token: null, isAuthenticated: false };
+  }
+};
 
 interface AuthState {
   user: User | null;
@@ -9,44 +41,33 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   initAuth: () => void;
-  login: (email: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
   logout: () => void;
-  quickSwitchRole: (role: UserRole) => void;
 }
 
+const initialAuth = readStoredAuth();
+
 export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  token: null,
-  isAuthenticated: false,
+  user: initialAuth.user,
+  token: initialAuth.token,
+  isAuthenticated: initialAuth.isAuthenticated,
   isLoading: false,
 
   initAuth: () => {
-    try {
-      const storedUser = localStorage.getItem('astral_user');
-      const storedToken = localStorage.getItem('astral_token');
-      if (storedUser && storedToken) {
-        const user = JSON.parse(storedUser) as User;
-        set({ user, token: storedToken, isAuthenticated: true });
-        return;
-      }
-    } catch (e) {
-      console.error('Lỗi khi đọc auth từ localStorage:', e);
-    }
-
-    // Mặc định nạp tài khoản Khách hàng mẫu
-    const db = getMockDb();
-    const defaultCustomer = db.users.find((u) => u.role === 'CUSTOMER') || db.users[0];
-    const defaultToken = `mock-token-${defaultCustomer.id}`;
-    localStorage.setItem('astral_user', JSON.stringify(defaultCustomer));
-    localStorage.setItem('astral_token', defaultToken);
-    set({ user: defaultCustomer, token: defaultToken, isAuthenticated: true });
+    set(readStoredAuth());
   },
 
-  login: async (email: string) => {
+  login: async (email: string, password: string) => {
     set({ isLoading: true });
     try {
-      const res = await authService.login(email);
-      set({ user: res.user, token: res.access_token, isAuthenticated: true, isLoading: false });
+      const res = await authService.login(email, password);
+      set({
+        user: res.user,
+        token: res.access_token,
+        isAuthenticated: true,
+        isLoading: false,
+      });
+      return res.user;
     } catch (error) {
       set({ isLoading: false });
       throw error;
@@ -56,15 +77,5 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: () => {
     authService.logout();
     set({ user: null, token: null, isAuthenticated: false });
-  },
-
-  quickSwitchRole: (role: UserRole) => {
-    const db = getMockDb();
-    const targetUser = db.users.find((u) => u.role === role);
-    if (!targetUser) return;
-    const token = `mock-token-${targetUser.id}`;
-    localStorage.setItem('astral_user', JSON.stringify(targetUser));
-    localStorage.setItem('astral_token', token);
-    set({ user: targetUser, token, isAuthenticated: true });
   },
 }));

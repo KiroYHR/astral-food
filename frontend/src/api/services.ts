@@ -26,13 +26,17 @@ const mockDelay = (ms = 200) => new Promise((resolve) => setTimeout(resolve, ms)
 // 1. AUTH SERVICE (TV1 RESTful Contract)
 // ==========================================
 export const authService = {
-  async login(email: string): Promise<AuthResponse> {
+  async login(email: string, password: string): Promise<AuthResponse> {
+    if (!password) {
+      throw new Error('Vui lòng nhập mật khẩu!');
+    }
+
     if (USE_MOCK) {
       await mockDelay();
       const db = getMockDb();
       const user = db.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
       if (!user) {
-        throw new Error('Email không tồn tại trong hệ thống. Hãy thử tài khoản mẫu.');
+        throw new Error('Email hoặc mật khẩu không chính xác.');
       }
       const token = `mock-jwt-token-for-${user.id}-${Date.now()}`;
       localStorage.setItem('astral_token', token);
@@ -40,23 +44,34 @@ export const authService = {
       return {
         access_token: token,
         token_type: 'Bearer',
-        user: user,
+        user,
       };
     }
-    const res: any = await apiClient.post('/auth/login', { email });
-    if (res.access_token) {
-      localStorage.setItem('astral_token', res.access_token);
+
+    const res: any = await apiClient.post('/auth/login', { email, password });
+    const token = res.access_token || res.accessToken;
+    if (token && res.user) {
+      localStorage.setItem('astral_token', token);
       localStorage.setItem('astral_user', JSON.stringify(res.user));
     }
-    return res;
+    return {
+      access_token: token,
+      token_type: res.token_type || res.tokenType || 'Bearer',
+      user: res.user,
+    };
   },
 
   async register(payload: {
     email: string;
+    password: string;
     full_name: string;
     phone: string;
     role: 'CUSTOMER' | 'MERCHANT';
   }): Promise<AuthResponse> {
+    if (!payload.password || payload.password.length < 6) {
+      throw new Error('Mật khẩu phải có ít nhất 6 ký tự!');
+    }
+
     if (USE_MOCK) {
       await mockDelay();
       const db = getMockDb();
@@ -75,7 +90,7 @@ export const authService = {
       db.users.push(newUser);
       saveMockDb(db);
 
-      const token = `mock-jwt-token-for-${newUser.id}`;
+      const token = `mock-jwt-token-for-${newUser.id}-${Date.now()}`;
       localStorage.setItem('astral_token', token);
       localStorage.setItem('astral_user', JSON.stringify(newUser));
       return {
@@ -84,8 +99,18 @@ export const authService = {
         user: newUser,
       };
     }
+
     const res: any = await apiClient.post('/auth/register', payload);
-    return res;
+    const token = res.access_token || res.accessToken;
+    if (token && res.user) {
+      localStorage.setItem('astral_token', token);
+      localStorage.setItem('astral_user', JSON.stringify(res.user));
+    }
+    return {
+      access_token: token,
+      token_type: res.token_type || res.tokenType || 'Bearer',
+      user: res.user,
+    };
   },
 
   async getMe(): Promise<User> {
@@ -95,8 +120,7 @@ export const authService = {
       if (rawUser) {
         return JSON.parse(rawUser);
       }
-      const db = getMockDb();
-      return db.users[0];
+      throw new Error('Chưa đăng nhập');
     }
     const res: any = await apiClient.get('/users/me');
     return res;

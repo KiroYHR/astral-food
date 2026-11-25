@@ -1,6 +1,6 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Flame, Mail, Lock, User, Phone, ArrowRight, ShieldCheck, UserCheck, Zap, Store } from 'lucide-react';
+import { Flame, Mail, Lock, User, Phone, ArrowRight, Store, Zap, ShieldCheck, UserCheck } from 'lucide-react';
 import { authService } from '../../api/services';
 import { useAuthStore } from '../../store/useAuthStore';
 import toast from 'react-hot-toast';
@@ -9,11 +9,11 @@ export const RegisterPage: React.FC = () => {
   const { initAuth } = useAuthStore();
   const navigate = useNavigate();
 
+  const [role, setRole] = useState<'CUSTOMER' | 'MERCHANT'>('CUSTOMER');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [role, setRole] = useState<'CUSTOMER' | 'MERCHANT'>('CUSTOMER');
-  const [password, setPassword] = useState('123456');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -22,23 +22,30 @@ export const RegisterPage: React.FC = () => {
       toast.error('Vui lòng điền đầy đủ họ tên, email và số điện thoại!');
       return;
     }
+    if (password.length < 6) {
+      toast.error('Mật khẩu phải có ít nhất 6 ký tự!');
+      return;
+    }
 
     setIsLoading(true);
     try {
-      await authService.register({
-        full_name: fullName,
-        email,
-        phone,
+      const res = await authService.register({
+        full_name: fullName.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        password,
         role,
       });
       initAuth();
-      toast.success(`Đăng ký tài khoản ${role === 'CUSTOMER' ? 'Khách hàng' : 'Chủ quán'} thành công!`, {
+      const targetRole = res.user?.role || role;
+      toast.success(`Đăng ký tài khoản ${targetRole === 'MERCHANT' ? 'Chủ quán' : 'Khách hàng'} thành công!`, {
         icon: '🎉',
       });
-      if (role === 'MERCHANT') navigate('/merchant');
-      else navigate('/');
+      if (targetRole === 'ADMIN') navigate('/admin', { replace: true });
+      else if (targetRole === 'MERCHANT') navigate('/merchant', { replace: true });
+      else navigate('/', { replace: true });
     } catch (err: any) {
-      toast.error(err.message || 'Đăng ký thất bại. Vui lòng thử lại.');
+      toast.error(err?.response?.data?.error || err?.message || 'Đăng ký thất bại. Vui lòng thử lại.');
     } finally {
       setIsLoading(false);
     }
@@ -108,10 +115,8 @@ export const RegisterPage: React.FC = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Chọn vai trò */}
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                Bạn tham gia với tư cách:
-              </label>
-              <div className="grid grid-cols-2 gap-2">
+              <label className="block text-xs font-bold text-gray-700 mb-2">Bạn muốn tham gia với tư cách:</label>
+              <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() => setRole('CUSTOMER')}
@@ -188,7 +193,8 @@ export const RegisterPage: React.FC = () => {
                 <Lock className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="password"
-                  placeholder="••••••••"
+                  minLength={6}
+                  placeholder="Tối thiểu 6 ký tự"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:border-orange-500"
