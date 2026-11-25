@@ -7,12 +7,13 @@ export const config = {
   apiPrefix: process.env.API_PREFIX || '/api/v1',
   jwtSecret: process.env.JWT_SECRET || 'dev_secret_key_change_in_production',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1d',
+  enforceAuth: process.env.ENFORCE_AUTH === 'true' || process.env.NODE_ENV === 'production',
 
   aws: {
     region: process.env.AWS_REGION || 'ap-southeast-1',
     accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
-    s3BucketMedia: process.env.S3_BUCKET_MEDIA || 'cloudbite-media',
+    s3BucketMedia: process.env.S3_BUCKET_MEDIA || 'astralfood-media',
     s3BucketInvoices:
       process.env.INVOICE_S3_BUCKET || process.env.S3_BUCKET_INVOICES || 'astralfood-invoices',
     s3PresignedExpires: parseInt(process.env.S3_PRESIGNED_EXPIRES || '300', 10),

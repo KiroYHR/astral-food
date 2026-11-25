@@ -15,7 +15,7 @@ app.use(config.apiPrefix, apiRouter);
 app.get('/', (req, res) => {
   res.json({
     status: 'healthy',
-    service: 'CloudBite API (Node.js)',
+    service: 'AstralFood API (Node.js)',
     environment: config.nodeEnv,
     time: new Date().toISOString(),
   });
