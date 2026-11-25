@@ -112,7 +112,7 @@ $fnExists = aws lambda get-function --function-name $FunctionName --region $Regi
 if ($LASTEXITCODE -ne 0) {
   aws lambda create-function `
     --function-name $FunctionName `
-    --runtime nodejs20.x `
+    --runtime nodejs22.x `
     --role $RoleArn `
     --handler index.handler `
     --timeout 30 `

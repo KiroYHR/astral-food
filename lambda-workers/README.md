@@ -63,7 +63,7 @@ lambda-workers/
    Compress-Archive -Path index.js,normalizeOrder.js,invoiceService.js,notificationService.js,package.json,node_modules -DestinationPath ..\order-processor.zip -Force
    ```
 4. **Tạo AWS Lambda Function:**
-   - Vào **AWS Lambda** (`ap-southeast-1`) → **Create function** → đặt tên `astralfood-order-processor`, Runtime **Node.js 20.x**.
+   - Vào **AWS Lambda** (`ap-southeast-1`) → **Create function** → đặt tên `astralfood-order-processor`, Runtime **Node.js 22.x**.
    - Vào tab **Code** → **Upload from .zip file** → tải lên `order-processor.zip` (Handler giữ mặc định `index.handler`).
    - Vào **Configuration → General configuration** → chỉnh **Timeout = `30 sec`**, **Memory = `256 MB`**.
    - Vào **Configuration → Environment variables** → thêm:
