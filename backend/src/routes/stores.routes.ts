@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { prisma } from '../prisma.js';
 import { serializeStore, serializeCategory, serializeProduct } from '../utils/serializer.js';
 import { getStoreOrdersHandler, getStoreAnalyticsHandler } from './orders.routes.js';
+import { requireRole } from '../middleware/auth.middleware.js';
 
 export const storesRouter = Router();
 
@@ -87,7 +88,7 @@ storesRouter.get('/:id', async (req: Request, res: Response) => {
 });
 
 // 4. Tạo cửa hàng mới
-storesRouter.post('/', async (req: Request, res: Response) => {
+storesRouter.post('/', requireRole('MERCHANT', 'ADMIN'), async (req: Request, res: Response) => {
   try {
     const { ownerId, name, description, address, logoS3Url, logo_s3_url } = req.body;
 
@@ -119,7 +120,7 @@ storesRouter.post('/', async (req: Request, res: Response) => {
 });
 
 // 5. Cập nhật thông tin cửa hàng (TV3 Điểm 2)
-storesRouter.put('/:id', async (req: Request, res: Response) => {
+storesRouter.put('/:id', requireRole('MERCHANT', 'ADMIN'), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { name, description, address, logoS3Url, logo_s3_url, isActive, is_active } = req.body;
@@ -158,7 +159,7 @@ storesRouter.get('/:id/categories', async (req: Request, res: Response) => {
 });
 
 // 7. Tạo danh mục món ăn mới (TV3 Điểm 2)
-storesRouter.post('/:id/categories', async (req: Request, res: Response) => {
+storesRouter.post('/:id/categories', requireRole('MERCHANT', 'ADMIN'), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { name, displayOrder, display_order } = req.body;
@@ -198,7 +199,7 @@ storesRouter.get('/:id/products', async (req: Request, res: Response) => {
 });
 
 // 9. Thêm món ăn mới vào thực đơn
-storesRouter.post('/products', async (req: Request, res: Response) => {
+storesRouter.post('/products', requireRole('MERCHANT', 'ADMIN'), async (req: Request, res: Response) => {
   try {
     const { storeId, store_id, categoryId, category_id, name, description, price, imageS3Url, image_s3_url } = req.body;
 
@@ -228,7 +229,7 @@ storesRouter.post('/products', async (req: Request, res: Response) => {
 });
 
 // 10. Cập nhật món ăn hoặc bật/tắt Còn hàng/Hết hàng (TV3 Điểm 2)
-storesRouter.patch('/products/:productId', async (req: Request, res: Response) => {
+storesRouter.patch('/products/:productId', requireRole('MERCHANT', 'ADMIN'), async (req: Request, res: Response) => {
   try {
     const { productId } = req.params;
     const { name, description, price, imageS3Url, image_s3_url, isAvailable, is_available, categoryId, category_id } = req.body;
@@ -253,7 +254,7 @@ storesRouter.patch('/products/:productId', async (req: Request, res: Response) =
 });
 
 // 11. Xóa món ăn khỏi thực đơn
-storesRouter.delete('/products/:productId', async (req: Request, res: Response) => {
+storesRouter.delete('/products/:productId', requireRole('MERCHANT', 'ADMIN'), async (req: Request, res: Response) => {
   try {
     const { productId } = req.params;
     await prisma.product.delete({
@@ -273,7 +274,7 @@ storesRouter.get('/:id/orders', getStoreOrdersHandler);
 storesRouter.get('/:id/analytics', getStoreAnalyticsHandler);
 
 // Hỗ trợ cả POST /api/v1/categories trực tiếp theo API Contract của TV3
-storesRouter.post('/categories', async (req: Request, res: Response) => {
+storesRouter.post('/categories', requireRole('MERCHANT', 'ADMIN'), async (req: Request, res: Response) => {
   try {
     const { storeId, store_id, name, displayOrder, display_order } = req.body;
     const actualStoreId = storeId || store_id;

@@ -1,8 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../prisma.js';
 import { serializeUser, serializeStore } from '../utils/serializer.js';
+import { requireRole } from '../middleware/auth.middleware.js';
 
 export const adminRouter = Router();
+
+// Áp dụng phân quyền ADMIN cho toàn bộ Admin Portal APIs
+adminRouter.use(requireRole('ADMIN'));
 
 // 1. Quản lý danh sách người dùng trong hệ thống (TV3 Điểm 5)
 adminRouter.get('/users', async (req: Request, res: Response) => {

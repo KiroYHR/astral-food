@@ -6,6 +6,7 @@ import { config } from '../config/index.js';
 import { sendOrderEventToSQS, OrderSQSEventType } from '../services/sqsService.js';
 import { getStoreAnalyticsData } from '../services/analyticsService.js';
 import { serializeOrder } from '../utils/serializer.js';
+import { requireRole } from '../middleware/auth.middleware.js';
 
 export const ordersRouter = Router();
 
@@ -142,7 +143,7 @@ export async function getStoreAnalyticsHandler(req: Request, res: Response) {
 }
 
 // 1. Quản trị viên lấy toàn bộ danh sách đơn hàng toàn sàn (Admin Phase 4)
-ordersRouter.get('/', async (_req: Request, res: Response) => {
+ordersRouter.get('/', requireRole('ADMIN'), async (_req: Request, res: Response) => {
   try {
     const orders = await prisma.order.findMany({
       include: {
@@ -345,7 +346,7 @@ ordersRouter.get('/stores/:storeId/orders', getStoreOrdersHandler);
 ordersRouter.get('/stores/:storeId/analytics', getStoreAnalyticsHandler);
 
 // 6. Cập nhật trạng thái đơn hàng (Xác nhận, Chế biến, Giao hàng, Hoàn tất, Hủy) -> Bắn SQS thông báo
-ordersRouter.patch('/:id/status', async (req: Request, res: Response) => {
+ordersRouter.patch('/:id/status', requireRole('MERCHANT', 'ADMIN'), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const rawStatus = typeof req.body.status === 'string' ? req.body.status.toUpperCase() : '';
