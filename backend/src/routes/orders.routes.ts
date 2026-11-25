@@ -6,7 +6,7 @@ import { config } from '../config/index.js';
 import { sendOrderEventToSQS, OrderSQSEventType } from '../services/sqsService.js';
 import { getStoreAnalyticsData } from '../services/analyticsService.js';
 import { serializeOrder } from '../utils/serializer.js';
-import { requireRole } from '../middleware/auth.middleware.js';
+import { requireAuth, requireRole } from '../middleware/auth.middleware.js';
 
 export const ordersRouter = Router();
 
@@ -161,7 +161,7 @@ ordersRouter.get('/', requireRole('ADMIN'), async (_req: Request, res: Response)
 });
 
 // 2. Khách hàng Đặt đơn hàng mới (Tính giá chuẩn ACID & Kích hoạt luồng SQS)
-ordersRouter.post('/', async (req: Request, res: Response) => {
+ordersRouter.post('/', requireAuth, async (req: Request, res: Response) => {
   try {
     const {
       customerId,
@@ -305,7 +305,7 @@ ordersRouter.post('/', async (req: Request, res: Response) => {
 });
 
 // 3. Khách hàng xem lịch sử đơn hàng của mình
-ordersRouter.get('/my-orders', async (req: Request, res: Response) => {
+ordersRouter.get('/my-orders', requireAuth, async (req: Request, res: Response) => {
   try {
     const tokenUserId = getUserIdFromAuthHeader(req);
     const queryCustomerId =

@@ -12,27 +12,22 @@ export interface AuthRequest extends Request {
 }
 
 /**
- * Xác thực JWT Bearer Token và kiểm tra phân quyền RBAC theo vai trò.
- * - Khi gửi JWT thật: luôn xác thực chữ ký và kiểm tra đúng role (401/403).
- * - Khi ở môi trường production hoặc ENFORCE_AUTH=true: bắt buộc có JWT hợp lệ.
- * - Khi ở môi trường development và Frontend dùng mock-token (DevModeSwitcher): cho phép đi qua để demo nhanh.
+ * Xác thực JWT Bearer Token thật và kiểm tra phân quyền RBAC theo vai trò.
+ * Mặc định luôn yêu cầu JWT thật (trả 401 nếu chưa đăng nhập, 403 nếu sai vai trò).
  */
 export function requireRole(...allowedRoles: AuthRole[]) {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
     const authHeader = req.headers.authorization;
-    const isStrict = config.enforceAuth;
+    const allowMock = process.env.ALLOW_DEV_MOCK_AUTH === 'true';
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      if (isStrict) {
-        return res.status(401).json({ error: 'Yêu cầu đăng nhập (thiếu Bearer Token).' });
-      }
-      return next();
+      if (allowMock) return next();
+      return res.status(401).json({ error: 'Yêu cầu đăng nhập (thiếu Bearer Token).' });
     }
 
     const token = authHeader.slice(7).trim();
 
-    // Cho phép DevModeSwitcher của Frontend ở môi trường development
-    if (!isStrict && token.startsWith('mock-token-')) {
+    if (allowMock && token.startsWith('mock-token-')) {
       return next();
     }
 
