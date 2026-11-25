@@ -1,41 +1,35 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Flame, Mail, Lock, ArrowRight, UserCheck, ShieldCheck, Zap } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import toast from 'react-hot-toast';
 
 export const LoginPage: React.FC = () => {
-  const { login, quickSwitchRole } = useAuthStore();
+  const { login } = useAuthStore();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('123456');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) {
-      toast.error('Vui lòng nhập địa chỉ email!');
+    if (!email.trim() || !password) {
+      toast.error('Vui lòng nhập đầy đủ email và mật khẩu!');
       return;
     }
     setIsLoading(true);
     try {
-      await login(email);
+      const loggedInUser = await login(email.trim(), password);
       toast.success('Đăng nhập thành công! Chào mừng bạn quay trở lại.', { icon: '🎉' });
-      navigate('/');
+      if (loggedInUser.role === 'ADMIN') navigate('/admin', { replace: true });
+      else if (loggedInUser.role === 'MERCHANT') navigate('/merchant', { replace: true });
+      else navigate('/', { replace: true });
     } catch (err: any) {
-      toast.error(err.message || 'Đăng nhập không thành công.');
+      toast.error(err?.response?.data?.error || err?.message || 'Đăng nhập không thành công.');
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleQuickLogin = (role: 'CUSTOMER' | 'MERCHANT' | 'ADMIN', demoEmail: string) => {
-    quickSwitchRole(role);
-    toast.success(`Đã đăng nhập nhanh với tài khoản: ${demoEmail}`, { icon: '⚡' });
-    if (role === 'MERCHANT') navigate('/merchant');
-    else if (role === 'ADMIN') navigate('/admin');
-    else navigate('/');
   };
 
   return (
@@ -146,42 +140,10 @@ export const LoginPage: React.FC = () => {
             </button>
           </form>
 
-          {/* Quick Demo Login Buttons */}
-          <div className="space-y-3 pt-4 border-t border-gray-200/80">
-            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center">
-              Hoặc đăng nhập nhanh bằng tài khoản mẫu:
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('CUSTOMER', 'customer@astralfood.vn')}
-                className="p-2.5 rounded-xl border border-orange-200 bg-orange-50/60 hover:bg-orange-100 text-[#FF5A1F] text-xs font-bold transition-all text-center cursor-pointer"
-              >
-                Khách Hàng
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('MERCHANT', 'merchant@astralfood.vn')}
-                className="p-2.5 rounded-xl border border-amber-200 bg-amber-50/60 hover:bg-amber-100 text-amber-700 text-xs font-bold transition-all text-center cursor-pointer"
-              >
-                Chủ Quán
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('ADMIN', 'admin@astralfood.vn')}
-                className="p-2.5 rounded-xl border border-purple-200 bg-purple-50/60 hover:bg-purple-100 text-purple-700 text-xs font-bold transition-all text-center cursor-pointer"
-              >
-                Admin
-              </button>
-            </div>
-          </div>
-
-          {/* Footer Link */}
-          <div className="text-center text-xs text-gray-500">
+          <div className="text-center text-xs text-gray-500 pt-2">
             Chưa có tài khoản AstralFood?{' '}
             <Link to="/register" className="font-bold text-[#FF5A1F] hover:underline">
-              Đăng ký ngay tại đây
+              Đăng ký ngay
             </Link>
           </div>
         </div>
