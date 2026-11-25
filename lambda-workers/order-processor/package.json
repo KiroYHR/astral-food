@@ -1,0 +1,14 @@
+{
+  "name": "astralfood-order-processor",
+  "version": "1.0.0",
+  "description": "Unified AWS Lambda Worker for AstralFood: generates PDF invoice to S3 and sends SES notification email in parallel via Promise.allSettled from a single SQS Queue.",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1157.0",
+    "@aws-sdk/client-ses": "^3.1157.0",
+    "pdfkit": "^0.20.2"
+  }
+}
