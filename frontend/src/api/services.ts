@@ -15,7 +15,12 @@ import type {
   PresignedUrlResponse,
   AICopilotResponse,
   PlatformOverview,
+  StoreReview,
+  StoreReviewsResponse,
+  AdminUserDetail,
 } from '../types';
+
+export type { AdminUserDetail };
 
 // Kiểm tra cờ Mock từ biến môi trường (mặc định là true nếu chưa cấu hình)
 const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false';
@@ -249,6 +254,7 @@ export const storeService = {
     name: string;
     address: string;
     description?: string;
+    category_tag?: string;
     logo_s3_url?: string;
   }): Promise<Store> {
     if (USE_MOCK) {
@@ -257,26 +263,28 @@ export const storeService = {
       const rawUser = localStorage.getItem('astral_user');
       const currentUser = rawUser ? (JSON.parse(rawUser) as User) : null;
       const storeId = `store-${Date.now()}`;
+      const nowTs = Date.now();
       const newStore: Store = {
         id: storeId,
         owner_id: currentUser?.id || 'user-merchant-1',
         name: data.name,
         description: data.description || '',
         address: data.address,
+        category_tag: data.category_tag,
         logo_s3_url:
           data.logo_s3_url ||
           'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=500&q=80',
-        rating: 5.0,
-        is_active: true,
+        rating: 0,
+        review_count: 0,
+        is_active: false,
         created_at: new Date().toISOString(),
       };
       db.stores.unshift(newStore);
-      db.categories.push({
-        id: `cat-${Date.now()}`,
-        store_id: storeId,
-        name: 'Món Chính',
-        display_order: 1,
-      });
+      db.categories.push(
+        { id: `cat-${nowTs}-1`, store_id: storeId, name: 'Món Chính', display_order: 1 },
+        { id: `cat-${nowTs}-2`, store_id: storeId, name: 'Món Thêm & Ăn Kèm', display_order: 2 },
+        { id: `cat-${nowTs}-3`, store_id: storeId, name: 'Đồ Uống', display_order: 3 }
+      );
       saveMockDb(db);
       return newStore;
     }
@@ -284,6 +292,7 @@ export const storeService = {
       name: data.name,
       address: data.address,
       description: data.description || '',
+      ...(data.category_tag ? { categoryTag: data.category_tag } : {}),
       ...(data.logo_s3_url ? { logoS3Url: data.logo_s3_url } : {}),
     });
     return res;
@@ -302,6 +311,7 @@ export const storeService = {
     const res: any = await apiClient.put(`/stores/${id}`, {
       ...(data.name && { name: data.name }),
       ...(data.description !== undefined && { description: data.description }),
+      ...(data.category_tag !== undefined && { categoryTag: data.category_tag }),
       ...(data.address && { address: data.address }),
       ...(data.logo_s3_url !== undefined && { logoS3Url: data.logo_s3_url }),
       ...(data.is_active !== undefined && { isActive: data.is_active }),
@@ -334,6 +344,50 @@ export const storeService = {
       return newCat;
     }
     const res: any = await apiClient.post(`/stores/${storeId}/categories`, { name });
+    return res;
+  },
+
+  async updateCategory(storeId: string, categoryId: string, name: string): Promise<Category> {
+    if (USE_MOCK) {
+      await mockDelay(100);
+      const db = getMockDb();
+      const cat = db.categories.find((c) => c.id === categoryId && c.store_id === storeId);
+      if (!cat) throw new Error('Không tìm thấy danh mục trong cửa hàng');
+      cat.name = name;
+      saveMockDb(db);
+      return cat;
+    }
+    const res: any = await apiClient.patch(`/stores/${storeId}/categories/${categoryId}`, { name });
+    return res;
+  },
+
+  async deleteCategory(storeId: string, categoryId: string): Promise<{ success: boolean; message: string }> {
+    if (USE_MOCK) {
+      await mockDelay(100);
+      const db = getMockDb();
+      const hasProducts = db.products.some((p) => p.store_id === storeId && p.category_id === categoryId);
+      if (hasProducts) {
+        throw new Error('Không thể xóa danh mục đang có món ăn. Hãy chuyển các món sang danh mục khác trước.');
+      }
+      db.categories = db.categories.filter((c) => !(c.id === categoryId && c.store_id === storeId));
+      saveMockDb(db);
+      return { success: true, message: 'Đã xóa danh mục thành công.' };
+    }
+    const res: any = await apiClient.delete(`/stores/${storeId}/categories/${categoryId}`);
+    return res;
+  },
+
+  async getStoreReviews(storeId: string): Promise<StoreReviewsResponse> {
+    if (USE_MOCK) {
+      await mockDelay(100);
+      return {
+        average_rating: 0,
+        review_count: 0,
+        distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+        reviews: [],
+      };
+    }
+    const res: any = await apiClient.get(`/stores/${storeId}/reviews`);
     return res;
   },
 };
@@ -668,6 +722,47 @@ export const orderService = {
     });
     return res;
   },
+
+  async submitOrderReview(
+    orderId: string,
+    rating: number,
+    comment: string
+  ): Promise<{
+    success: boolean;
+    message: string;
+    review: StoreReview;
+    store_rating: number;
+    review_count: number;
+  }> {
+    if (USE_MOCK) {
+      await mockDelay(150);
+      const db = getMockDb();
+      const order = db.orders.find((o) => o.id === orderId);
+      if (!order) throw new Error('Không tìm thấy đơn hàng.');
+      const review: StoreReview = {
+        id: `rev-${Date.now()}`,
+        order_id: orderId,
+        store_id: order.store_id,
+        customer_id: order.customer_id,
+        customer_name: order.customer_name || 'Khách hàng',
+        rating,
+        comment,
+        created_at: new Date().toISOString(),
+      };
+      order.has_reviewed = true;
+      order.review = review;
+      saveMockDb(db);
+      return {
+        success: true,
+        message: 'Cảm ơn bạn đã đánh giá cửa hàng!',
+        review,
+        store_rating: rating,
+        review_count: 1,
+      };
+    }
+    const res: any = await apiClient.post(`/orders/${orderId}/review`, { rating, comment });
+    return res;
+  },
 };
 
 // ==========================================
@@ -753,9 +848,137 @@ export const adminService = {
       ownerId: merchantOwner?.id,
       name: data.name,
       description: data.description,
+      ...(data.category_tag ? { categoryTag: data.category_tag } : {}),
       address: data.address,
       logoS3Url: data.logo_s3_url,
     });
+    return res;
+  },
+
+  async rejectStore(storeId: string): Promise<{ success: boolean; message: string }> {
+    if (USE_MOCK) {
+      await mockDelay(150);
+      const db = getMockDb();
+      db.stores = db.stores.filter((s) => s.id !== storeId);
+      saveMockDb(db);
+      return { success: true, message: 'Đã từ chối và xóa yêu cầu mở cửa hàng.' };
+    }
+    const res: any = await apiClient.delete(`/admin/stores/${storeId}/reject`);
+    return res;
+  },
+
+  async getUserDetail(userId: string): Promise<AdminUserDetail> {
+    if (USE_MOCK) {
+      await mockDelay(150);
+      const db = getMockDb();
+      const user = db.users.find((u) => u.id === userId);
+      if (!user) throw new Error('Không tìm thấy người dùng.');
+      const userStores = db.stores.filter((s) => s.owner_id === userId);
+      const userOrders = db.orders.filter((o) => o.customer_id === userId && o.status === 'COMPLETED');
+      const totalSpent = userOrders.reduce((sum, o) => sum + o.total_amount, 0);
+      return {
+        ...user,
+        stores: userStores,
+        total_spent: totalSpent,
+        ses_verification: {
+          email: user.email,
+          status: 'SIMULATED',
+          sent: false,
+          verified: true,
+          message: 'Chế độ Mock cục bộ.',
+        },
+      };
+    }
+    const res: any = await apiClient.get(`/admin/users/${userId}`);
+    return res;
+  },
+
+  async verifyUserSesEmail(
+    userId: string
+  ): Promise<{ success: boolean; message: string; ses_verification: EmailVerificationInfo }> {
+    if (USE_MOCK) {
+      await mockDelay(150);
+      return {
+        success: true,
+        message: 'Đã mô phỏng gửi email xác minh SES.',
+        ses_verification: {
+          email: '',
+          status: 'SIMULATED',
+          sent: true,
+          verified: false,
+          message: 'Chế độ Mock cục bộ.',
+        },
+      };
+    }
+    const res: any = await apiClient.post(`/admin/users/${userId}/verify-ses`);
+    return res;
+  },
+
+  async deleteUser(userId: string): Promise<{ success: boolean; message: string }> {
+    if (USE_MOCK) {
+      await mockDelay(150);
+      const db = getMockDb();
+      db.users = db.users.filter((u) => u.id !== userId);
+      saveMockDb(db);
+      return { success: true, message: 'Đã xóa người dùng khỏi hệ thống.' };
+    }
+    const res: any = await apiClient.delete(`/admin/users/${userId}`);
+    return res;
+  },
+
+  async getStoreMenuForAdmin(storeId: string): Promise<{
+    store: Store;
+    categories: Category[];
+    products: Product[];
+  }> {
+    if (USE_MOCK) {
+      await mockDelay(150);
+      const db = getMockDb();
+      const store = db.stores.find((s) => s.id === storeId);
+      if (!store) throw new Error('Không tìm thấy cửa hàng.');
+      return {
+        store,
+        categories: db.categories.filter((c) => c.store_id === storeId),
+        products: db.products.filter((p) => p.store_id === storeId),
+      };
+    }
+    const res: any = await apiClient.get(`/admin/stores/${storeId}/menu`);
+    return res;
+  },
+
+  async toggleProductAvailabilityByAdmin(
+    storeId: string,
+    productId: string,
+    isAvailable: boolean
+  ): Promise<Product> {
+    if (USE_MOCK) {
+      await mockDelay(100);
+      const db = getMockDb();
+      const prod = db.products.find((p) => p.id === productId && p.store_id === storeId);
+      if (!prod) throw new Error('Không tìm thấy món ăn trong cửa hàng này.');
+      prod.is_available = isAvailable;
+      saveMockDb(db);
+      return prod;
+    }
+    const res: any = await apiClient.patch(
+      `/admin/stores/${storeId}/products/${productId}/availability`,
+      { isAvailable }
+    );
+    return res.product || res;
+  },
+
+  async deleteProductByAdmin(
+    storeId: string,
+    productId: string
+  ): Promise<{ success: boolean; message: string }> {
+    if (USE_MOCK) {
+      await mockDelay(100);
+      const db = getMockDb();
+      db.products = db.products.filter((p) => !(p.id === productId && p.store_id === storeId));
+      saveMockDb(db);
+      return { success: true, message: 'Đã gỡ món ăn khỏi thực đơn cửa hàng.' };
+    }
+    const res: any = await apiClient.delete(`/admin/stores/${storeId}/products/${productId}`);
     return res;
   },
 

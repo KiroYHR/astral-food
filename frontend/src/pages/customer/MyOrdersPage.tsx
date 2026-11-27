@@ -12,6 +12,7 @@ import {
   ArrowRight,
   AlertTriangle,
   X,
+  Star,
 } from 'lucide-react';
 import { orderService } from '../../api/services';
 import toast from 'react-hot-toast';
@@ -24,6 +25,34 @@ export const MyOrdersPage: React.FC = () => {
   const [selectedInvoiceOrder, setSelectedInvoiceOrder] = useState<Order | null>(null);
   const prevStatusMapRef = useRef<Record<string, OrderStatus> | null>(null);
   const [rejectedAlerts, setRejectedAlerts] = useState<Order[]>([]);
+
+  // Modal đánh giá quán sau khi đơn COMPLETED
+  const [reviewingOrder, setReviewingOrder] = useState<Order | null>(null);
+  const [reviewRating, setReviewRating] = useState<number>(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+
+  const handleSubmitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reviewingOrder) return;
+    setIsSubmittingReview(true);
+    try {
+      const res = await orderService.submitOrderReview(
+        reviewingOrder.id,
+        reviewRating,
+        reviewComment.trim()
+      );
+      toast.success(res.message || 'Cảm ơn bạn đã đánh giá quán!');
+      setReviewingOrder(null);
+      setReviewRating(5);
+      setReviewComment('');
+      await loadOrders();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || err?.message || 'Không thể gửi đánh giá lúc này');
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
 
   useEffect(() => {
     loadOrders();
@@ -298,7 +327,24 @@ export const MyOrdersPage: React.FC = () => {
                   <h3 className="text-lg font-black text-gray-900 mt-1">{order.store_name}</h3>
                 </div>
 
-                <div className="flex items-center gap-2 self-start sm:self-auto">
+                <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                  {activeTab === 'history' &&
+                    order.status === 'COMPLETED' &&
+                    !order.has_reviewed && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReviewingOrder(order);
+                          setReviewRating(5);
+                          setReviewComment('');
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                        <span>Đánh giá quán</span>
+                      </button>
+                    )}
+
                   {/* Xem Hóa Đơn Button */}
                   <button
                     type="button"
@@ -319,6 +365,19 @@ export const MyOrdersPage: React.FC = () => {
                   <span>Quán đã từ chối / Đơn hàng đã bị hủy</span>
                 </div>
               )}
+
+              {activeTab === 'history' &&
+                order.status === 'COMPLETED' &&
+                order.has_reviewed &&
+                order.review && (
+                  <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-50/70 text-amber-900 text-xs border border-amber-200">
+                    <Star className="w-4 h-4 fill-amber-400 text-amber-400 shrink-0" />
+                    <span>
+                      <strong>Đã đánh giá: {order.review.rating}/5 ⭐</strong>
+                      {order.review.comment ? ` — "${order.review.comment}"` : ''}
+                    </span>
+                  </div>
+                )}
 
               {/* Items List */}
               <div className="space-y-2.5 pt-2">
@@ -375,6 +434,98 @@ export const MyOrdersPage: React.FC = () => {
         order={selectedInvoiceOrder}
         onClose={() => setSelectedInvoiceOrder(null)}
       />
+
+      {/* Modal Đánh Giá Quán */}
+      {reviewingOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl border border-orange-100">
+            <div className="px-6 py-4 bg-gradient-to-r from-orange-500 to-rose-500 text-white flex items-center justify-between">
+              <div>
+                <h3 className="font-black text-base">Đánh giá quán ăn</h3>
+                <p className="text-[11px] text-orange-100 truncate">
+                  {reviewingOrder.store_name} • Đơn #{reviewingOrder.id.slice(-6).toUpperCase()}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReviewingOrder(null)}
+                className="p-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white cursor-pointer"
+                aria-label="Đóng"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitReview} className="p-6 space-y-5 text-xs">
+              <div className="text-center space-y-2">
+                <p className="font-bold text-gray-700 text-sm">
+                  Bạn hài lòng với món ăn và chất lượng phục vụ chứ?
+                </p>
+                <div className="flex items-center justify-center gap-2 py-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setReviewRating(star)}
+                      className="p-1.5 rounded-xl hover:scale-110 transition-transform cursor-pointer"
+                      aria-label={`Chọn ${star} sao`}
+                    >
+                      <Star
+                        className={`w-8 h-8 ${
+                          star <= reviewRating
+                            ? 'fill-amber-400 text-amber-400'
+                            : 'text-gray-300'
+                        }`}
+                      />
+                    </button>
+                  ))}
+                </div>
+                <span className="inline-block px-3 py-1 rounded-full bg-amber-50 text-amber-800 font-bold text-xs border border-amber-200">
+                  {reviewRating === 5
+                    ? 'Tuyệt vời (5/5)'
+                    : reviewRating === 4
+                      ? 'Rất ngon (4/5)'
+                      : reviewRating === 3
+                        ? 'Bình thường (3/5)'
+                        : reviewRating === 2
+                          ? 'Chưa hài lòng (2/5)'
+                          : 'Rất tệ (1/5)'}
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-bold text-gray-700 block">
+                  Nhận xét của bạn <span className="text-gray-400 font-normal">(tùy chọn)</span>
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="VD: Cơm nóng hổi, sườn nướng thơm mềm, đóng gói sạch sẽ..."
+                  value={reviewComment}
+                  onChange={(e) => setReviewComment(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#FF5A1F] text-xs text-gray-900 resize-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setReviewingOrder(null)}
+                  className="flex-1 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold cursor-pointer"
+                >
+                  Để sau
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingReview}
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 hover:opacity-95 text-white font-black shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingReview ? 'Đang gửi...' : 'Gửi Đánh Giá'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

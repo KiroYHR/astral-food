@@ -70,9 +70,12 @@ export const HomePage: React.FC = () => {
   // Lọc quán ăn theo danh mục, tìm kiếm và đánh giá
   const filteredStores = stores
     .filter((s) => {
+      const catTag = s.category_tag?.toLowerCase() || '';
       const matchCat =
         selectedCategory === 'Tất cả' ||
-        s.category_tag?.toLowerCase().includes(selectedCategory.toLowerCase());
+        (selectedCategory === 'Món cuốn'
+          ? catTag.includes('cuốn')
+          : catTag.includes(selectedCategory.toLowerCase()));
       const matchSearch =
         !searchQuery ||
         s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -303,10 +306,18 @@ export const HomePage: React.FC = () => {
                       alt={store.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     />
-                    <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-xs px-2.5 py-1 rounded-full text-[11px] font-bold text-gray-800 flex items-center gap-1 shadow-xs">
-                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                      <span>{store.rating || 4.8}</span>
-                    </div>
+                    {(store.review_count ?? 0) > 0 && Number(store.rating) > 0 ? (
+                      <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-xs px-2.5 py-1 rounded-full text-[11px] font-bold text-gray-800 flex items-center gap-1 shadow-xs">
+                        <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                        <span>
+                          {Number(store.rating).toFixed(1)} ({store.review_count})
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-xs px-2.5 py-1 rounded-full text-[11px] font-bold text-[#FF5A1F] shadow-xs">
+                        Mới • Chưa có đánh giá
+                      </div>
+                    )}
 
                     <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-xs px-2.5 py-1 rounded-full text-[11px] font-semibold text-gray-700 flex items-center gap-1 shadow-xs">
                       <Clock className="w-3.5 h-3.5 text-gray-500" />
