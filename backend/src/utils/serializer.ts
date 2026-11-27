@@ -16,6 +16,31 @@ export function serializeCategory(cat: any) {
   };
 }
 
+export function serializeReview(review: any) {
+  if (!review) return null;
+  const customerName =
+    review.customer?.fullName ||
+    review.customer?.full_name ||
+    review.customer_name ||
+    'Khách hàng AstralFood';
+
+  return {
+    id: review.id,
+    order_id: review.orderId || review.order_id,
+    orderId: review.orderId || review.order_id,
+    store_id: review.storeId || review.store_id,
+    storeId: review.storeId || review.store_id,
+    customer_id: review.customerId || review.customer_id,
+    customerId: review.customerId || review.customer_id,
+    customer_name: customerName,
+    customerName,
+    rating: Number(review.rating) || 0,
+    comment: review.comment || '',
+    created_at: review.createdAt || review.created_at || new Date().toISOString(),
+    createdAt: review.createdAt || review.created_at || new Date().toISOString(),
+  };
+}
+
 export function serializeProduct(prod: any) {
   if (!prod) return null;
   const priceNum = Number(prod.price) || 0;
@@ -23,6 +48,7 @@ export function serializeProduct(prod: any) {
     prod.imageS3Url ||
     prod.image_s3_url ||
     'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&q=80';
+  const categoryName = prod.category?.name || prod.category_name || prod.categoryName;
 
   return {
     id: prod.id,
@@ -30,6 +56,7 @@ export function serializeProduct(prod: any) {
     storeId: prod.storeId || prod.store_id,
     category_id: prod.categoryId || prod.category_id,
     categoryId: prod.categoryId || prod.category_id,
+    ...(categoryName ? { category_name: categoryName, categoryName } : {}),
     name: prod.name,
     description: prod.description || '',
     price: priceNum,
@@ -44,7 +71,10 @@ export function serializeProduct(prod: any) {
 }
 
 function inferCategoryTag(store: any): string {
-  if (store.category_tag) return store.category_tag;
+  const explicitTag = store.categoryTag || store.category_tag;
+  if (typeof explicitTag === 'string' && explicitTag.trim().length > 0) {
+    return explicitTag.trim();
+  }
   const text = `${store.name || ''} ${store.description || ''}`.toLowerCase();
   const tags: string[] = [];
   if (text.includes('cơm tấm') || text.includes('com tam')) tags.push('Cơm tấm');
@@ -53,7 +83,7 @@ function inferCategoryTag(store: any): string {
   if (text.includes('phở') || text.includes('bún bò') || text.includes('hủ tiếu')) tags.push('Phở & Bún');
   if (text.includes('bún đậu') || text.includes('cuốn') || text.includes('gỏi cuốn')) tags.push('Món cuốn, Bún đậu & Cuốn');
   if (text.includes('bakery') || text.includes('bánh') || text.includes('ăn vặt') || text.includes('tráng miệng')) tags.push('Ăn vặt');
-  return tags.length > 0 ? tags.join(', ') : 'Trà sữa & Cafe, Ăn vặt';
+  return tags.length > 0 ? tags.join(', ') : 'Ẩm thực Việt';
 }
 
 export function serializeStore(store: any) {
@@ -62,6 +92,12 @@ export function serializeStore(store: any) {
     store.logoS3Url ||
     store.logo_s3_url ||
     'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=500&q=80';
+  const resolvedCategoryTag = inferCategoryTag(store);
+  const resolvedRating =
+    store.rating !== undefined && store.rating !== null ? Number(store.rating) : 0;
+  const reviewCount =
+    store._count?.reviews ??
+    (Array.isArray(store.reviews) ? store.reviews.length : Number(store.review_count ?? store.reviewCount ?? 0));
 
   return {
     id: store.id,
@@ -72,15 +108,38 @@ export function serializeStore(store: any) {
     address: store.address || '',
     logo_s3_url: logoUrl,
     logoS3Url: logoUrl,
-    rating: Number(store.rating) || 4.9,
+    rating: Number.isFinite(resolvedRating) ? resolvedRating : 0,
+    review_count: reviewCount,
+    reviewCount,
     delivery_time: store.delivery_time || '20-30 phút',
-    category_tag: inferCategoryTag(store),
+    category_tag: resolvedCategoryTag,
+    categoryTag: resolvedCategoryTag,
     is_active: store.isActive !== undefined ? store.isActive : (store.is_active !== undefined ? store.is_active : true),
     isActive: store.isActive !== undefined ? store.isActive : (store.is_active !== undefined ? store.is_active : true),
     created_at: store.createdAt || store.created_at || new Date().toISOString(),
     createdAt: store.createdAt || store.created_at || new Date().toISOString(),
+    ...(store.owner
+      ? {
+          owner: {
+            id: store.owner.id,
+            full_name: store.owner.fullName || store.owner.full_name,
+            fullName: store.owner.fullName || store.owner.full_name,
+            email: store.owner.email,
+            phone: store.owner.phone,
+          },
+        }
+      : {}),
+    ...(store._count
+      ? {
+          _count: store._count,
+          products_count: store._count.products ?? 0,
+          orders_count: store._count.orders ?? 0,
+          reviews_count: store._count.reviews ?? 0,
+        }
+      : {}),
     categories: Array.isArray(store.categories) ? store.categories.map(serializeCategory) : undefined,
     products: Array.isArray(store.products) ? store.products.map(serializeProduct) : undefined,
+    ...(Array.isArray(store.reviews) ? { reviews: store.reviews.map(serializeReview) } : {}),
   };
 }
 
@@ -95,6 +154,13 @@ export function serializeUser(user: any) {
     role: user.role,
     created_at: user.createdAt || user.created_at || new Date().toISOString(),
     createdAt: user.createdAt || user.created_at || new Date().toISOString(),
+    ...(user._count
+      ? {
+          _count: user._count,
+          orders_count: user._count.orders ?? 0,
+          stores_count: user._count.stores ?? 0,
+        }
+      : {}),
   };
 }
 
@@ -139,6 +205,9 @@ export function serializeOrder(order: any) {
     invoiceS3Url: order.invoiceS3Url || order.invoice_s3_url || '',
     created_at: order.createdAt || order.created_at || new Date().toISOString(),
     createdAt: order.createdAt || order.created_at || new Date().toISOString(),
+    has_reviewed: Boolean(order.review),
+    hasReviewed: Boolean(order.review),
+    review: order.review ? serializeReview(order.review) : null,
     items,
   };
 }

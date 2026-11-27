@@ -33,6 +33,7 @@ model User {
 
   stores        Store[]
   orders        Order[]
+  reviews       Review[]
 
   @@map("users")
 }
@@ -42,9 +43,10 @@ model Store {
   ownerId     String      @map("owner_id")
   name        String
   description String?
+  categoryTag String?     @map("category_tag")
   address     String
   logoS3Url   String?     @map("logo_s3_url")
-  rating      Decimal     @default(4.8) @db.Decimal(3, 2)
+  rating      Decimal     @default(0) @db.Decimal(3, 2)
   isActive    Boolean     @default(true) @map("is_active")
   createdAt   DateTime    @default(now()) @map("created_at")
 
@@ -52,6 +54,7 @@ model Store {
   categories  Category[]
   products    Product[]
   orders      Order[]
+  reviews     Review[]
 
   @@map("stores")
 }
@@ -102,6 +105,7 @@ model Order {
   customer        User         @relation(fields: [customerId], references: [id])
   store           Store        @relation(fields: [storeId], references: [id])
   items           OrderItem[]
+  review          Review?
 
   @@map("orders")
 }
@@ -117,4 +121,21 @@ model OrderItem {
   product   Product  @relation(fields: [productId], references: [id])
 
   @@map("order_items")
+}
+
+model Review {
+  id         String   @id @default(uuid())
+  orderId    String   @unique @map("order_id")
+  storeId    String   @map("store_id")
+  customerId String   @map("customer_id")
+  rating     Int
+  comment    String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  store      Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer   User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, createdAt])
+  @@map("reviews")
 }

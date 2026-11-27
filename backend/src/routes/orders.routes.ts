@@ -5,7 +5,7 @@ import { prisma } from '../prisma.js';
 import { config } from '../config/index.js';
 import { sendOrderEventToSQS, OrderSQSEventType } from '../services/sqsService.js';
 import { getStoreAnalyticsData } from '../services/analyticsService.js';
-import { serializeOrder } from '../utils/serializer.js';
+import { serializeOrder, serializeReview } from '../utils/serializer.js';
 import { requireAuth, requireRole, AuthRequest } from '../middleware/auth.middleware.js';
 
 export const ordersRouter = Router();
@@ -181,6 +181,11 @@ ordersRouter.get('/', requireRole('ADMIN'), async (_req: Request, res: Response)
         store: { select: { name: true, logoS3Url: true } },
         customer: { select: { fullName: true, phone: true, email: true } },
         items: { include: { product: true } },
+        review: {
+          include: {
+            customer: { select: { fullName: true } },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -359,6 +364,11 @@ ordersRouter.get('/my-orders', requireAuth, async (req: Request, res: Response) 
         store: { select: { name: true, logoS3Url: true } },
         customer: { select: { fullName: true, phone: true, email: true } },
         items: { include: { product: true } },
+        review: {
+          include: {
+            customer: { select: { fullName: true } },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -431,5 +441,90 @@ ordersRouter.patch('/:id/status', requireRole('MERCHANT', 'ADMIN'), async (req: 
   } catch (error) {
     console.error('[ORDER STATUS UPDATE ERROR]', error);
     return res.status(500).json({ error: 'Không thể cập nhật trạng thái đơn hàng.' });
+  }
+});
+
+// 7. Khách hàng gửi đánh giá cửa hàng sau khi đơn COMPLETED
+ordersRouter.post('/:id/review', requireRole('CUSTOMER'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const customerId = req.user?.sub;
+    const ratingVal = Number(req.body.rating);
+    const comment = typeof req.body.comment === 'string' ? req.body.comment.trim() : '';
+
+    if (!customerId) {
+      return res.status(401).json({ error: 'Yêu cầu đăng nhập để gửi đánh giá.' });
+    }
+
+    if (!Number.isInteger(ratingVal) || ratingVal < 1 || ratingVal > 5) {
+      return res.status(400).json({ error: 'Số sao đánh giá phải là số nguyên từ 1 đến 5.' });
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id },
+      include: { review: true },
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
+    }
+
+    if (order.customerId !== customerId) {
+      return res.status(403).json({ error: 'Bạn chỉ có thể đánh giá đơn hàng của chính mình.' });
+    }
+
+    if (order.status !== 'COMPLETED') {
+      return res.status(400).json({ error: 'Chỉ có thể đánh giá quán sau khi đơn hàng đã hoàn tất.' });
+    }
+
+    if (order.review) {
+      return res.status(409).json({ error: 'Đơn hàng này đã được đánh giá rồi.' });
+    }
+
+    const txResult = await prisma.$transaction(async (tx) => {
+      const created = await tx.review.create({
+        data: {
+          orderId: order.id,
+          storeId: order.storeId,
+          customerId,
+          rating: ratingVal,
+          comment,
+        },
+        include: {
+          customer: { select: { fullName: true } },
+        },
+      });
+
+      const agg = await tx.review.aggregate({
+        where: { storeId: order.storeId },
+        _avg: { rating: true },
+        _count: { id: true },
+      });
+
+      const avgRating = Number((agg._avg.rating || 0).toFixed(2));
+      await tx.store.update({
+        where: { id: order.storeId },
+        data: { rating: avgRating },
+      });
+
+      return {
+        created,
+        avgRating,
+        reviewCount: agg._count.id,
+      };
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Cảm ơn bạn đã đánh giá cửa hàng!',
+      review: serializeReview(txResult.created),
+      store_rating: txResult.avgRating,
+      storeRating: txResult.avgRating,
+      review_count: txResult.reviewCount,
+      reviewCount: txResult.reviewCount,
+    });
+  } catch (error) {
+    console.error('[ORDER REVIEW ERROR]', error);
+    return res.status(500).json({ error: 'Không thể gửi đánh giá lúc này.' });
   }
 });

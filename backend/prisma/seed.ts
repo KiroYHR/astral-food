@@ -66,6 +66,7 @@ interface SeedStoreInput {
   ownerPhone: string;
   name: string;
   description: string;
+  categoryTag: string;
   address: string;
   rating: number;
   logoSourceUrl: string;
@@ -89,6 +90,7 @@ const REAL_STORES: SeedStoreInput[] = [
     ownerPhone: '0912345678',
     name: 'Cơm Tấm Phúc Lộc Thọ – Tô Hiến Thành',
     description: 'Hệ thống cơm tấm sườn nướng than hoa chuẩn vị Sài Gòn, nước mắm kẹo gia truyền.',
+    categoryTag: 'Cơm tấm',
     address: '236 Tô Hiến Thành, Phường 15, Quận 10, TP. Hồ Chí Minh',
     rating: 4.9,
     logoSourceUrl: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=800&q=80',
@@ -140,6 +142,7 @@ const REAL_STORES: SeedStoreInput[] = [
     ownerPhone: '0912345672',
     name: 'Phúc Long Coffee & Tea – Vạn Hạnh Mall',
     description: 'Trà sữa đậm vị trà Thái Nguyên & Lâm Đồng, cà phê rang xay truyền thống.',
+    categoryTag: 'Trà sữa & Cafe',
     address: '11 Sư Vạn Hạnh, Phường 12, Quận 10, TP. Hồ Chí Minh',
     rating: 4.8,
     logoSourceUrl: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=800&q=80',
@@ -191,6 +194,7 @@ const REAL_STORES: SeedStoreInput[] = [
     ownerPhone: '0912345673',
     name: 'Phở Hòa Pasteur',
     description: 'Thương hiệu phở bò gia truyền nổi tiếng từ năm 1968 tại TP.HCM, nước dùng hầm xương 12 giờ.',
+    categoryTag: 'Phở & Bún',
     address: '260C Pasteur, Phường Võ Thị Sáu, Quận 3, TP. Hồ Chí Minh',
     rating: 4.9,
     logoSourceUrl: 'https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?w=800&q=80',
@@ -237,6 +241,7 @@ const REAL_STORES: SeedStoreInput[] = [
     ownerPhone: '0912345674',
     name: 'Gà Rán Popeyes – Cách Mạng Tháng 8',
     description: 'Gà rán giòn cay kiểu Louisiana tẩm ướp 12 giờ, burger giòn rụm và khoai tây sốt Cajun.',
+    categoryTag: 'Gà rán & Burger',
     address: '588 Cách Mạng Tháng 8, Phường 11, Quận 3, TP. Hồ Chí Minh',
     rating: 4.7,
     logoSourceUrl: 'https://images.unsplash.com/photo-1626645738196-c2a7c87a8f58?w=800&q=80',
@@ -283,6 +288,7 @@ const REAL_STORES: SeedStoreInput[] = [
     ownerPhone: '0912345675',
     name: 'Bún Đậu Mắm Tôm Cô Khàn',
     description: 'Mẹt bún đậu mắm tôm chuẩn vị Hà Nội giữa lòng Sài Gòn: đậu rán giòn, chả cốm, nem chua rán.',
+    categoryTag: 'Bún đậu & Cuốn',
     address: '102/26 Cống Quỳnh, Phường Phạm Ngũ Lão, Quận 1, TP. Hồ Chí Minh',
     rating: 4.8,
     logoSourceUrl: 'https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=800&q=80',
@@ -329,6 +335,7 @@ const REAL_STORES: SeedStoreInput[] = [
     ownerPhone: '0912345676',
     name: 'Astral Gourmet Cafe & Bakery',
     description: 'Thương hiệu cà phê đặc sản, bánh nướng thủ công và đồ ăn vặt phong cách Cloud-Kitchen hiện đại.',
+    categoryTag: 'Trà sữa & Cafe, Ăn vặt',
     address: '268 Lý Thường Kiệt, Phường 14, Quận 10, TP. Hồ Chí Minh',
     rating: 4.9,
     logoSourceUrl: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=800&q=80',
@@ -425,12 +432,31 @@ async function main() {
       role: Role.CUSTOMER,
     },
   });
-  console.log(`✅ Các tài khoản chính sẵn sàng: ${admin.email}, ${merchant.email} (và merchant2..6@astralfood.com), ${customer.email}`);
+
+  const customer2 = await prisma.user.upsert({
+    where: { email: 'customer2@gmail.com' },
+    update: {},
+    create: {
+      email: 'customer2@gmail.com',
+      passwordHash: passwordHashCustomer,
+      fullName: 'Trần Thị Minh Anh',
+      phone: '0987654322',
+      role: Role.CUSTOMER,
+    },
+  });
+  console.log(`✅ Các tài khoản chính sẵn sàng: ${admin.email}, ${merchant.email} (và merchant2..6@astralfood.com), ${customer.email}, ${customer2.email}`);
 
   let totalStores = 0;
   let totalProducts = 0;
   let firstStoreId = '';
   const firstStoreProducts: { id: string; price: number }[] = [];
+  const seededStoresForReviews: {
+    slug: string;
+    storeId: string;
+    address: string;
+    firstProductId: string;
+    firstProductPrice: number;
+  }[] = [];
 
   for (const s of REAL_STORES) {
     const storeOwner = await prisma.user.upsert({
@@ -454,6 +480,7 @@ async function main() {
           ownerId: storeOwner.id,
           name: s.name,
           description: s.description,
+          categoryTag: s.categoryTag,
           address: s.address,
           logoS3Url,
           rating: s.rating,
@@ -466,6 +493,7 @@ async function main() {
         data: {
           ownerId: storeOwner.id,
           description: s.description,
+          categoryTag: s.categoryTag,
           address: s.address,
           logoS3Url,
           rating: s.rating,
@@ -514,10 +542,137 @@ async function main() {
         if (store.id === firstStoreId) {
           firstStoreProducts.push({ id: product.id, price: p.price });
         }
+        if (!seededStoresForReviews.some((item) => item.storeId === store.id)) {
+          seededStoresForReviews.push({
+            slug: s.slug,
+            storeId: store.id,
+            address: s.address,
+            firstProductId: product.id,
+            firstProductPrice: p.price,
+          });
+        }
       }
     }
     console.log(`✅ Quán: ${store.name} (${s.address})`);
   }
+
+  // Nạp đánh giá thật từ các đơn COMPLETED cho 6 quán mẫu (nếu quán chưa có review nào)
+  const sampleReviewsMap: Record<
+    string,
+    { rating1: number; comment1: string; rating2: number; comment2: string }
+  > = {
+    'com-tam-phuc-loc-tho': {
+      rating1: 5,
+      comment1: 'Sườn nướng thơm mềm, cơm tấm tơi ngon và nước mắm kẹo rất vừa miệng!',
+      rating2: 5,
+      comment2: 'Giao nhanh còn nóng hổi, phần bì chả đầy đặn đáng tiền.',
+    },
+    'phuc-long-van-hanh-mall': {
+      rating1: 5,
+      comment1: 'Trà đào cam sả chuẩn vị, vị trà đậm thanh mát cực thích.',
+      rating2: 4,
+      comment2: 'Ô long nướng thơm, đóng gói cẩn thận không bị đổ khi ship.',
+    },
+    'pho-hoa-pasteur': {
+      rating1: 5,
+      comment1: 'Nước dùng trong và ngọt thanh chuẩn vị gia truyền, thịt tái rất mềm.',
+      rating2: 5,
+      comment2: 'Đóng gói nước lèo riêng cẩn thận, ăn cùng quẩy giòn rụm.',
+    },
+    'popeyes-cmt8': {
+      rating1: 5,
+      comment1: 'Gà rán vỏ giòn cay Cajun rất bắt miệng, khoai tây chiên giòn.',
+      rating2: 4,
+      comment2: 'Burger tôm nóng giòn, giao đúng giờ hẹn.',
+    },
+    'bun-dau-co-khan': {
+      rating1: 5,
+      comment1: 'Mẹt bún đậu tá lả cực kỳ chất lượng, chả cốm dẻo thơm và mắm tôm ngon.',
+      rating2: 5,
+      comment2: 'Đậu rán vàng giòn bên ngoài béo bên trong, rau sống sạch tươi.',
+    },
+    'astral-gourmet-cafe': {
+      rating1: 5,
+      comment1: 'Cà phê muối béo mịn đậm vị, bánh croissant trứng muối rất thơm.',
+      rating2: 5,
+      comment2: 'Trà sữa trân châu hoàng kim ít ngọt vừa phải, giao rất nhanh.',
+    },
+  };
+
+  for (const item of seededStoresForReviews) {
+    const existingReviewCount = await prisma.review.count({ where: { storeId: item.storeId } });
+    if (existingReviewCount === 0) {
+      const sample = sampleReviewsMap[item.slug] || {
+        rating1: 5,
+        comment1: 'Món ăn ngon, đóng gói sạch sẽ và giao đúng giờ!',
+        rating2: 4,
+        comment2: 'Hương vị ổn định, sẽ ủng hộ quán tiếp.',
+      };
+
+      const order1 = await prisma.order.create({
+        data: {
+          customerId: customer.id,
+          storeId: item.storeId,
+          totalAmount: item.firstProductPrice,
+          discountAmount: 0,
+          status: OrderStatus.COMPLETED,
+          deliveryAddress: '268 Lý Thường Kiệt, Phường 14, Quận 10, TP. Hồ Chí Minh',
+          note: 'Giao giờ trưa',
+          items: {
+            create: [{ productId: item.firstProductId, quantity: 1, unitPrice: item.firstProductPrice }],
+          },
+        },
+      });
+      await prisma.review.create({
+        data: {
+          orderId: order1.id,
+          storeId: item.storeId,
+          customerId: customer.id,
+          rating: sample.rating1,
+          comment: sample.comment1,
+        },
+      });
+
+      const order2 = await prisma.order.create({
+        data: {
+          customerId: customer2.id,
+          storeId: item.storeId,
+          totalAmount: item.firstProductPrice,
+          discountAmount: 0,
+          status: OrderStatus.COMPLETED,
+          deliveryAddress: '135 Hai Bà Trưng, Quận 1, TP. Hồ Chí Minh',
+          note: '',
+          items: {
+            create: [{ productId: item.firstProductId, quantity: 1, unitPrice: item.firstProductPrice }],
+          },
+        },
+      });
+      await prisma.review.create({
+        data: {
+          orderId: order2.id,
+          storeId: item.storeId,
+          customerId: customer2.id,
+          rating: sample.rating2,
+          comment: sample.comment2,
+        },
+      });
+    }
+  }
+
+  // Đồng bộ lại rating thật cho toàn bộ cửa hàng dựa trên bảng reviews (0 nếu chưa có review)
+  const allDbStores = await prisma.store.findMany({ select: { id: true } });
+  for (const dbStore of allDbStores) {
+    const agg = await prisma.review.aggregate({
+      where: { storeId: dbStore.id },
+      _avg: { rating: true },
+    });
+    const avg = agg._avg.rating !== null ? Number(agg._avg.rating.toFixed(2)) : 0;
+    await prisma.store.update({
+      where: { id: dbStore.id },
+      data: { rating: avg },
+    });
+  }
+  console.log(`✅ Đã đồng bộ điểm đánh giá trung bình thực tế cho ${allDbStores.length} cửa hàng.`);
 
   // Nạp 5 đơn hàng COMPLETED rải đều 5 ngày gần đây nếu bảng orders còn trống (để biểu đồ Recharts lên đẹp)
   const existingOrders = await prisma.order.count();

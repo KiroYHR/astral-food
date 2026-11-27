@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../prisma.js';
-import { serializeStore, serializeCategory, serializeProduct } from '../utils/serializer.js';
+import { serializeStore, serializeCategory, serializeProduct, serializeReview } from '../utils/serializer.js';
 import {
   getStoreOrdersHandler,
   getStoreAnalyticsHandler,
@@ -38,6 +38,11 @@ storesRouter.get('/', async (req: Request, res: Response) => {
 
     const stores = await prisma.store.findMany({
       where,
+      include: {
+        _count: {
+          select: { reviews: true, products: true },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
     return res.json(stores.map(serializeStore));
@@ -58,6 +63,11 @@ storesRouter.get('/mine', requireRole('MERCHANT', 'ADMIN'), async (req: AuthRequ
     const showAllForAdmin = authUser.role === 'ADMIN' && req.query.all === 'true';
     const stores = await prisma.store.findMany({
       where: showAllForAdmin ? {} : { ownerId: authUser.sub },
+      include: {
+        _count: {
+          select: { reviews: true, products: true },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -85,7 +95,13 @@ storesRouter.get('/me', requireRole('MERCHANT', 'ADMIN'), async (req: AuthReques
       where: { ownerId: targetOwnerId },
       include: {
         categories: { orderBy: { displayOrder: 'asc' } },
-        products: { orderBy: { createdAt: 'desc' } },
+        products: {
+          include: { category: { select: { id: true, name: true } } },
+          orderBy: { createdAt: 'desc' },
+        },
+        _count: {
+          select: { reviews: true, products: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -109,7 +125,13 @@ storesRouter.get('/:id', async (req: Request, res: Response) => {
       where: { id },
       include: {
         categories: { orderBy: { displayOrder: 'asc' } },
-        products: { orderBy: { createdAt: 'desc' } },
+        products: {
+          include: { category: { select: { id: true, name: true } } },
+          orderBy: { createdAt: 'desc' },
+        },
+        _count: {
+          select: { reviews: true, products: true },
+        },
       },
     });
 
@@ -132,6 +154,8 @@ storesRouter.post('/', requireRole('MERCHANT', 'ADMIN'), async (req: AuthRequest
       owner_id,
       name,
       description,
+      categoryTag,
+      category_tag,
       address,
       logoS3Url,
       logo_s3_url,
@@ -167,11 +191,16 @@ storesRouter.post('/', requireRole('MERCHANT', 'ADMIN'), async (req: AuthRequest
             : false
         : false;
 
+    const resolvedCategoryTag = categoryTag ?? category_tag;
     const store = await prisma.store.create({
       data: {
         ownerId: targetOwnerId,
         name: String(name).trim(),
         description: description ? String(description).trim() : '',
+        categoryTag:
+          resolvedCategoryTag && String(resolvedCategoryTag).trim()
+            ? String(resolvedCategoryTag).trim()
+            : null,
         address: String(address).trim(),
         logoS3Url:
           logoS3Url ||
@@ -179,15 +208,19 @@ storesRouter.post('/', requireRole('MERCHANT', 'ADMIN'), async (req: AuthRequest
           'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=500&q=80',
         isActive: initialIsActive,
         categories: {
-          create: {
-            name: 'Món Chính',
-            displayOrder: 1,
-          },
+          create: [
+            { name: 'Món Chính', displayOrder: 1 },
+            { name: 'Món Thêm & Ăn Kèm', displayOrder: 2 },
+            { name: 'Đồ Uống', displayOrder: 3 },
+          ],
         },
       },
       include: {
         categories: { orderBy: { displayOrder: 'asc' } },
         products: true,
+        _count: {
+          select: { reviews: true, products: true },
+        },
       },
     });
 
@@ -205,13 +238,24 @@ storesRouter.put('/:id', requireRole('MERCHANT', 'ADMIN'), async (req: AuthReque
     const ownedStore = await assertStoreOwnership(id, req, res);
     if (!ownedStore) return;
 
-    const { name, description, address, logoS3Url, logo_s3_url, isActive, is_active } = req.body;
+    const {
+      name,
+      description,
+      categoryTag,
+      category_tag,
+      address,
+      logoS3Url,
+      logo_s3_url,
+      isActive,
+      is_active,
+    } = req.body;
     const requestedActive =
       isActive !== undefined
         ? Boolean(isActive)
         : is_active !== undefined
           ? Boolean(is_active)
           : undefined;
+    const nextCategoryTag = categoryTag !== undefined ? categoryTag : category_tag;
 
     if (req.user?.role !== 'ADMIN' && !ownedStore.isActive && requestedActive === true) {
       return res.status(403).json({
@@ -225,6 +269,12 @@ storesRouter.put('/:id', requireRole('MERCHANT', 'ADMIN'), async (req: AuthReque
       data: {
         ...(name && { name }),
         ...(description !== undefined && { description }),
+        ...(nextCategoryTag !== undefined && {
+          categoryTag:
+            nextCategoryTag && String(nextCategoryTag).trim()
+              ? String(nextCategoryTag).trim()
+              : null,
+        }),
         ...(address && { address }),
         ...((logoS3Url || logo_s3_url) && { logoS3Url: logoS3Url || logo_s3_url }),
         ...(requestedActive !== undefined && { isActive: requestedActive }),
@@ -282,13 +332,133 @@ storesRouter.post('/:id/categories', requireRole('MERCHANT', 'ADMIN'), async (re
   }
 });
 
+// 7b. Cập nhật tên / thứ tự danh mục món ăn của cửa hàng
+storesRouter.patch('/:id/categories/:categoryId', requireRole('MERCHANT', 'ADMIN'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { id, categoryId } = req.params;
+    const ownedStore = await assertStoreOwnership(id, req, res);
+    if (!ownedStore) return;
+    if (!assertStoreApprovedForMenu(ownedStore, req, res)) return;
+
+    const existing = await prisma.category.findFirst({
+      where: { id: categoryId, storeId: id },
+    });
+    if (!existing) {
+      return res.status(404).json({ error: 'Không tìm thấy danh mục trong cửa hàng.' });
+    }
+
+    const { name, displayOrder, display_order } = req.body;
+    const nextOrder = displayOrder !== undefined ? Number(displayOrder) : display_order !== undefined ? Number(display_order) : undefined;
+
+    if (name !== undefined && !String(name).trim()) {
+      return res.status(400).json({ error: 'Tên danh mục không được để trống.' });
+    }
+
+    const updated = await prisma.category.update({
+      where: { id: categoryId },
+      data: {
+        ...(name !== undefined && { name: String(name).trim() }),
+        ...(nextOrder !== undefined && Number.isFinite(nextOrder) && { displayOrder: nextOrder }),
+      },
+    });
+
+    return res.json(serializeCategory(updated));
+  } catch (error) {
+    console.error('[CATEGORY UPDATE ERROR]', error);
+    return res.status(500).json({ error: 'Không thể cập nhật danh mục món ăn.' });
+  }
+});
+
+// 7c. Xóa danh mục món ăn (chỉ cho xóa khi danh mục rỗng)
+storesRouter.delete('/:id/categories/:categoryId', requireRole('MERCHANT', 'ADMIN'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { id, categoryId } = req.params;
+    const ownedStore = await assertStoreOwnership(id, req, res);
+    if (!ownedStore) return;
+    if (!assertStoreApprovedForMenu(ownedStore, req, res)) return;
+
+    const existing = await prisma.category.findFirst({
+      where: { id: categoryId, storeId: id },
+      include: {
+        _count: { select: { products: true } },
+      },
+    });
+    if (!existing) {
+      return res.status(404).json({ error: 'Không tìm thấy danh mục trong cửa hàng.' });
+    }
+
+    if (existing._count.products > 0) {
+      return res.status(400).json({
+        error: 'Không thể xóa danh mục đang có món ăn. Hãy chuyển các món sang danh mục khác trước.',
+      });
+    }
+
+    await prisma.category.delete({ where: { id: categoryId } });
+    return res.json({
+      success: true,
+      message: 'Đã xóa danh mục thành công.',
+      deletedCategoryId: categoryId,
+    });
+  } catch (error) {
+    console.error('[CATEGORY DELETE ERROR]', error);
+    return res.status(500).json({ error: 'Không thể xóa danh mục món ăn.' });
+  }
+});
+
+// 7d. Lấy danh sách đánh giá khách hàng & phân bố số sao của cửa hàng
+storesRouter.get('/:id/reviews', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const store = await prisma.store.findUnique({
+      where: { id },
+      select: { id: true, rating: true },
+    });
+
+    if (!store) {
+      return res.status(404).json({ error: 'Không tìm thấy cửa hàng.' });
+    }
+
+    const reviews = await prisma.review.findMany({
+      where: { storeId: id },
+      include: {
+        customer: { select: { fullName: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const distribution: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    for (const r of reviews) {
+      const star = Math.min(5, Math.max(1, Math.round(r.rating)));
+      distribution[star] = (distribution[star] || 0) + 1;
+    }
+
+    const avgRating = Number(store.rating || 0);
+    return res.json({
+      store_id: id,
+      storeId: id,
+      average_rating: avgRating,
+      averageRating: avgRating,
+      review_count: reviews.length,
+      reviewCount: reviews.length,
+      distribution,
+      reviews: reviews.map(serializeReview),
+    });
+  } catch (error) {
+    console.error('[STORE REVIEWS ERROR]', error);
+    return res.status(500).json({ error: 'Không thể tải danh sách đánh giá cửa hàng.' });
+  }
+});
+
 // 8. Lấy danh sách món ăn của cửa hàng
 storesRouter.get('/:id/products', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const products = await prisma.product.findMany({
       where: { storeId: id },
-      orderBy: { createdAt: 'desc' },
+      include: {
+        category: { select: { id: true, name: true } },
+      },
+      orderBy: [{ category: { displayOrder: 'asc' } }, { createdAt: 'desc' }],
     });
     return res.json(products.map(serializeProduct));
   } catch (error) {
