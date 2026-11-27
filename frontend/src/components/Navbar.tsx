@@ -1,8 +1,22 @@
-﻿import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { ShoppingBag, Flame, Search, MapPin, User as UserIcon, FileText, LogOut, ChevronDown } from 'lucide-react';
+import React, { useState } from 'react';
+import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import {
+  ShoppingBag,
+  Flame,
+  Search,
+  MapPin,
+  User as UserIcon,
+  FileText,
+  LogOut,
+  ChevronDown,
+  ChefHat,
+  ShieldCheck,
+} from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useCartStore } from '../store/useCartStore';
+
+const DEFAULT_ADDRESS_KEY = 'astral_default_address';
+const DEFAULT_ADDRESS_FALLBACK = '268 Lý Thường Kiệt, Phường 14, Quận 10, TP.HCM';
 
 interface NavbarProps {
   onSearch?: (query: string) => void;
@@ -14,10 +28,43 @@ export const Navbar: React.FC<NavbarProps> = ({ onSearch, searchQuery }) => {
   const { getItemCount, toggleCart } = useCartStore();
   const itemCount = getItemCount();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [address, setAddress] = useState('268 Lý Thường Kiệt, Phường 14, Quận 10');
+  const [address, setAddress] = useState(() => {
+    try {
+      return localStorage.getItem(DEFAULT_ADDRESS_KEY) || DEFAULT_ADDRESS_FALLBACK;
+    } catch {
+      return DEFAULT_ADDRESS_FALLBACK;
+    }
+  });
   const [isEditingAddress, setIsEditingAddress] = useState(false);
+
+  const currentSearch = searchQuery !== undefined ? searchQuery : searchParams.get('q') || '';
+
+  const handleSearchChange = (value: string) => {
+    if (onSearch) {
+      onSearch(value);
+      return;
+    }
+    if (location.pathname === '/') {
+      setSearchParams(value ? { q: value } : {}, { replace: true });
+    } else {
+      navigate(value ? `/?q=${encodeURIComponent(value)}` : '/');
+    }
+  };
+
+  const commitAddress = (next: string) => {
+    const cleaned = next.trim() || DEFAULT_ADDRESS_FALLBACK;
+    setAddress(cleaned);
+    try {
+      localStorage.setItem(DEFAULT_ADDRESS_KEY, cleaned);
+    } catch {
+      // Ignore storage error
+    }
+    setIsEditingAddress(false);
+  };
 
   const handleLogout = () => {
     logout();
@@ -56,8 +103,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onSearch, searchQuery }) => {
                   type="text"
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
-                  onBlur={() => setIsEditingAddress(false)}
-                  onKeyDown={(e) => e.key === 'Enter' && setIsEditingAddress(false)}
+                  onBlur={() => commitAddress(address)}
+                  onKeyDown={(e) => e.key === 'Enter' && commitAddress(address)}
                   autoFocus
                   className="w-56 text-xs font-bold text-gray-900 border-b border-orange-500 focus:outline-none"
                 />
@@ -82,8 +129,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onSearch, searchQuery }) => {
             <input
               type="text"
               placeholder="Bạn muốn ăn gì hôm nay? (Cơm tấm, trà sữa, phở bò...)"
-              value={searchQuery || ''}
-              onChange={(e) => onSearch && onSearch(e.target.value)}
+              value={currentSearch}
+              onChange={(e) => handleSearchChange(e.target.value)}
               className="w-full pl-11 pr-4 py-2.5 text-sm bg-[#FFFDF9] border border-gray-200 rounded-full focus:outline-none focus:border-[#FF5A1F] focus:ring-2 focus:ring-orange-500/10 transition-all placeholder:text-gray-400"
             />
           </div>
@@ -135,11 +182,33 @@ export const Navbar: React.FC<NavbarProps> = ({ onSearch, searchQuery }) => {
 
               {/* Dropdown Menu */}
               {isUserMenuOpen && (
-                <div className="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-xl border border-gray-100 py-1.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-gray-100 py-1.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
                   <div className="px-4 py-2 border-b border-gray-100">
                     <p className="text-xs font-bold text-gray-900">{user.full_name}</p>
                     <p className="text-[11px] text-gray-500 truncate">{user.email}</p>
                   </div>
+
+                  {(user.role === 'MERCHANT' || user.role === 'ADMIN') && (
+                    <Link
+                      to="/merchant"
+                      onClick={() => setIsUserMenuOpen(false)}
+                      className="flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-gray-700 hover:bg-orange-50 hover:text-[#FF5A1F] transition-colors"
+                    >
+                      <ChefHat className="w-4 h-4 text-[#FF5A1F]" />
+                      <span>Quản lý cửa hàng</span>
+                    </Link>
+                  )}
+
+                  {user.role === 'ADMIN' && (
+                    <Link
+                      to="/admin"
+                      onClick={() => setIsUserMenuOpen(false)}
+                      className="flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors"
+                    >
+                      <ShieldCheck className="w-4 h-4 text-purple-600" />
+                      <span>Quản trị hệ thống</span>
+                    </Link>
+                  )}
 
                   <Link
                     to="/my-orders"

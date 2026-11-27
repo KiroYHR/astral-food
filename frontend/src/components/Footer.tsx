@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Flame, Phone, Mail, MapPin, ShieldCheck, Heart } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -70,7 +70,7 @@ export const Footer: React.FC = () => {
             </div>
             <div className="flex items-center gap-2">
               <Mail className="w-3.5 h-3.5 text-gray-400" />
-              <span>hotro@astralfood.vn</span>
+              <span>hotro@astralfood.com</span>
             </div>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import {
   Flame,
   TrendingUp,
@@ -14,6 +14,7 @@ import {
   MapPin,
   FileText,
   PlusCircle,
+  LogOut,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { Store, Category, Product, Order } from '../../types';
@@ -25,7 +26,8 @@ import { MenuManagerTab } from './components/MenuManagerTab';
 import { StoreSettingsTab } from './components/StoreSettingsTab';
 
 export const MerchantDashboardPage: React.FC = () => {
-  const { user } = useAuthStore();
+  const { user, logout } = useAuthStore();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const currentTab = searchParams.get('tab') || 'analytics';
 
@@ -363,6 +365,21 @@ export const MerchantDashboardPage: React.FC = () => {
               >
                 <ArrowLeft className="w-4 h-4" />
               </Link>
+
+              {/* Đăng xuất */}
+              <button
+                type="button"
+                onClick={() => {
+                  logout();
+                  toast.success('Đã đăng xuất tài khoản');
+                  navigate('/login', { replace: true });
+                }}
+                className="px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Đăng xuất tài khoản"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Đăng xuất</span>
+              </button>
             </div>
           </div>
 

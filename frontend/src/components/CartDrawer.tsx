@@ -1,10 +1,13 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { X, Trash2, Plus, Minus, Tag, ArrowRight, ShoppingBag, CheckCircle2 } from 'lucide-react';
 import { useCartStore } from '../store/useCartStore';
-import { orderService } from '../api/services';
+import { useAuthStore } from '../store/useAuthStore';
 import toast from 'react-hot-toast';
 
 export const CartDrawer: React.FC = () => {
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuthStore();
   const {
     items,
     storeName,
@@ -15,22 +18,18 @@ export const CartDrawer: React.FC = () => {
     setIsCartOpen,
     updateQuantity,
     removeItem,
-    clearCart,
     applyVoucher,
     removeVoucher,
     getSubtotal,
-    getTotal,
   } = useCartStore();
 
   const [voucherInput, setVoucherInput] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [address, setAddress] = useState('268 Lý Thường Kiệt, Phường 14, Quận 10, TP.HCM');
-  const [note, setNote] = useState('');
 
   if (!isCartOpen) return null;
 
   const subtotal = getSubtotal();
-  const total = getTotal();
+  const foodDiscount = voucherCode === 'FREESHIP' ? 0 : discountAmount;
+  const estimatedFoodTotal = Math.max(0, subtotal - foodDiscount);
 
   const handleApplyVoucher = (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,41 +43,15 @@ export const CartDrawer: React.FC = () => {
     }
   };
 
-  const handleCheckout = async () => {
+  const handleProceedToCheckout = () => {
     if (items.length === 0 || !storeId) return;
-
-    setIsSubmitting(true);
-    try {
-      const order = await orderService.createOrder({
-        store_id: storeId,
-        delivery_address: address,
-        note: note || 'Giao hàng cẩn thận giúp em',
-        voucher_code: voucherCode || undefined,
-        items: items.map((i) => ({
-          product_id: i.product.id,
-          quantity: i.quantity,
-        })),
-      });
-
-      clearCart();
-      setIsCartOpen(false);
-      toast.success(
-        `Đặt đơn hàng #${order.id} thành công! Đã gửi thông điệp vào Amazon SQS.`,
-        {
-          duration: 4000,
-          icon: '🚀',
-          style: {
-            borderRadius: '12px',
-            background: '#10B981',
-            color: '#FFFFFF',
-          },
-        }
-      );
-    } catch (err: any) {
-      toast.error(err.message || 'Có lỗi xảy ra khi tạo đơn hàng.');
-    } finally {
-      setIsSubmitting(false);
+    setIsCartOpen(false);
+    if (!isAuthenticated) {
+      toast('Vui lòng đăng nhập để tiến hành đặt hàng!', { icon: '🔐' });
+      navigate('/login');
+      return;
     }
+    navigate('/checkout');
   };
 
   return (
@@ -218,7 +191,10 @@ export const CartDrawer: React.FC = () => {
                 {voucherCode && (
                   <div className="mt-2 flex items-center justify-between text-xs bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg border border-emerald-200">
                     <span className="flex items-center gap-1 font-semibold">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Đã áp mã {voucherCode} (-{discountAmount.toLocaleString('vi-VN')} đ)
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      {voucherCode === 'FREESHIP'
+                        ? 'Đã áp mã FREESHIP (Miễn phí ship)'
+                        : `Đã áp mã ${voucherCode} (-${foodDiscount.toLocaleString('vi-VN')} đ)`}
                     </span>
                     <button
                       type="button"
@@ -231,29 +207,6 @@ export const CartDrawer: React.FC = () => {
                 )}
               </div>
 
-              {/* Delivery Details */}
-              <div className="space-y-2 pt-2 border-t border-gray-200/60 text-xs">
-                <div>
-                  <label className="block text-gray-600 font-medium mb-1">Địa chỉ giao hàng:</label>
-                  <input
-                    type="text"
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-orange-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-600 font-medium mb-1">Ghi chú cho quán & shipper:</label>
-                  <input
-                    type="text"
-                    placeholder="VD: Không lấy cay, để đồ trước cửa..."
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-orange-500"
-                  />
-                </div>
-              </div>
-
               {/* Price Breakdown */}
               <div className="space-y-1.5 text-xs text-gray-600 pt-2 border-t border-gray-200/60">
                 <div className="flex justify-between">
@@ -262,37 +215,36 @@ export const CartDrawer: React.FC = () => {
                     {subtotal.toLocaleString('vi-VN')} đ
                   </span>
                 </div>
-                {discountAmount > 0 && (
+                {foodDiscount > 0 && (
                   <div className="flex justify-between text-emerald-600">
-                    <span>Giảm giá khuyến mãi:</span>
+                    <span>Giảm giá voucher ({voucherCode}):</span>
                     <span className="font-semibold">
-                      -{discountAmount.toLocaleString('vi-VN')} đ
+                      -{foodDiscount.toLocaleString('vi-VN')} đ
                     </span>
                   </div>
                 )}
+                {voucherCode === 'FREESHIP' && (
+                  <div className="flex justify-between text-emerald-600">
+                    <span>Ưu đãi phí giao hàng:</span>
+                    <span className="font-semibold">Miễn phí ship</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm font-extrabold text-gray-900 pt-1.5 border-t border-gray-200">
-                  <span>Tổng thanh toán:</span>
+                  <span>Tạm tính đơn món:</span>
                   <span className="text-[#FF5A1F] text-base">
-                    {total.toLocaleString('vi-VN')} đ
+                    {estimatedFoodTotal.toLocaleString('vi-VN')} đ
                   </span>
                 </div>
               </div>
 
-              {/* Checkout Button */}
+              {/* Proceed to Checkout Button */}
               <button
                 type="button"
-                onClick={handleCheckout}
-                disabled={isSubmitting}
-                className="w-full py-3.5 px-4 rounded-xl bg-coral-gradient hover:opacity-95 text-white font-bold text-sm shadow-lg shadow-orange-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60"
+                onClick={handleProceedToCheckout}
+                className="w-full py-3.5 px-4 rounded-xl bg-coral-gradient hover:opacity-95 text-white font-bold text-sm shadow-lg shadow-orange-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer"
               >
-                {isSubmitting ? (
-                  <span>Đang đẩy đơn vào AWS SQS...</span>
-                ) : (
-                  <>
-                    <span>Đặt Hàng Ngay ({total.toLocaleString('vi-VN')} đ)</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
+                <span>Tiến Hành Thanh Toán ({estimatedFoodTotal.toLocaleString('vi-VN')} đ)</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
             </div>
           )}
