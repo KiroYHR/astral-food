@@ -61,6 +61,9 @@ async function ensureImageOnS3(s3Key: string, sourceUrl: string): Promise<string
 
 interface SeedStoreInput {
   slug: string;
+  ownerEmail: string;
+  ownerFullName: string;
+  ownerPhone: string;
   name: string;
   description: string;
   address: string;
@@ -81,6 +84,9 @@ interface SeedStoreInput {
 const REAL_STORES: SeedStoreInput[] = [
   {
     slug: 'com-tam-phuc-loc-tho',
+    ownerEmail: 'merchant@astralfood.com',
+    ownerFullName: 'Chủ Quán Phúc Lộc Thọ',
+    ownerPhone: '0912345678',
     name: 'Cơm Tấm Phúc Lộc Thọ – Tô Hiến Thành',
     description: 'Hệ thống cơm tấm sườn nướng than hoa chuẩn vị Sài Gòn, nước mắm kẹo gia truyền.',
     address: '236 Tô Hiến Thành, Phường 15, Quận 10, TP. Hồ Chí Minh',
@@ -129,6 +135,9 @@ const REAL_STORES: SeedStoreInput[] = [
   },
   {
     slug: 'phuc-long-van-hanh-mall',
+    ownerEmail: 'merchant2@astralfood.com',
+    ownerFullName: 'Chủ Quán Phúc Long Vạn Hạnh',
+    ownerPhone: '0912345672',
     name: 'Phúc Long Coffee & Tea – Vạn Hạnh Mall',
     description: 'Trà sữa đậm vị trà Thái Nguyên & Lâm Đồng, cà phê rang xay truyền thống.',
     address: '11 Sư Vạn Hạnh, Phường 12, Quận 10, TP. Hồ Chí Minh',
@@ -177,6 +186,9 @@ const REAL_STORES: SeedStoreInput[] = [
   },
   {
     slug: 'pho-hoa-pasteur',
+    ownerEmail: 'merchant3@astralfood.com',
+    ownerFullName: 'Chủ Quán Phở Hòa Pasteur',
+    ownerPhone: '0912345673',
     name: 'Phở Hòa Pasteur',
     description: 'Thương hiệu phở bò gia truyền nổi tiếng từ năm 1968 tại TP.HCM, nước dùng hầm xương 12 giờ.',
     address: '260C Pasteur, Phường Võ Thị Sáu, Quận 3, TP. Hồ Chí Minh',
@@ -220,6 +232,9 @@ const REAL_STORES: SeedStoreInput[] = [
   },
   {
     slug: 'popeyes-cmt8',
+    ownerEmail: 'merchant4@astralfood.com',
+    ownerFullName: 'Chủ Quán Popeyes CMT8',
+    ownerPhone: '0912345674',
     name: 'Gà Rán Popeyes – Cách Mạng Tháng 8',
     description: 'Gà rán giòn cay kiểu Louisiana tẩm ướp 12 giờ, burger giòn rụm và khoai tây sốt Cajun.',
     address: '588 Cách Mạng Tháng 8, Phường 11, Quận 3, TP. Hồ Chí Minh',
@@ -263,6 +278,9 @@ const REAL_STORES: SeedStoreInput[] = [
   },
   {
     slug: 'bun-dau-co-khan',
+    ownerEmail: 'merchant5@astralfood.com',
+    ownerFullName: 'Chủ Quán Bún Đậu Cô Khàn',
+    ownerPhone: '0912345675',
     name: 'Bún Đậu Mắm Tôm Cô Khàn',
     description: 'Mẹt bún đậu mắm tôm chuẩn vị Hà Nội giữa lòng Sài Gòn: đậu rán giòn, chả cốm, nem chua rán.',
     address: '102/26 Cống Quỳnh, Phường Phạm Ngũ Lão, Quận 1, TP. Hồ Chí Minh',
@@ -306,6 +324,9 @@ const REAL_STORES: SeedStoreInput[] = [
   },
   {
     slug: 'astral-gourmet-cafe',
+    ownerEmail: 'merchant6@astralfood.com',
+    ownerFullName: 'Chủ Quán Astral Gourmet',
+    ownerPhone: '0912345676',
     name: 'Astral Gourmet Cafe & Bakery',
     description: 'Thương hiệu cà phê đặc sản, bánh nướng thủ công và đồ ăn vặt phong cách Cloud-Kitchen hiện đại.',
     address: '268 Lý Thường Kiệt, Phường 14, Quận 10, TP. Hồ Chí Minh',
@@ -404,7 +425,7 @@ async function main() {
       role: Role.CUSTOMER,
     },
   });
-  console.log(`✅ 3 tài khoản sẵn sàng: ${admin.email}, ${merchant.email}, ${customer.email}`);
+  console.log(`✅ Các tài khoản chính sẵn sàng: ${admin.email}, ${merchant.email} (và merchant2..6@astralfood.com), ${customer.email}`);
 
   let totalStores = 0;
   let totalProducts = 0;
@@ -412,13 +433,25 @@ async function main() {
   const firstStoreProducts: { id: string; price: number }[] = [];
 
   for (const s of REAL_STORES) {
+    const storeOwner = await prisma.user.upsert({
+      where: { email: s.ownerEmail },
+      update: {},
+      create: {
+        email: s.ownerEmail,
+        passwordHash: passwordHashMerchant,
+        fullName: s.ownerFullName,
+        phone: s.ownerPhone,
+        role: Role.MERCHANT,
+      },
+    });
+
     const logoS3Url = await ensureImageOnS3(`stores/${s.slug}.jpg`, s.logoSourceUrl);
 
     let store = await prisma.store.findFirst({ where: { name: s.name } });
     if (!store) {
       store = await prisma.store.create({
         data: {
-          ownerId: merchant.id,
+          ownerId: storeOwner.id,
           name: s.name,
           description: s.description,
           address: s.address,
@@ -430,7 +463,14 @@ async function main() {
     } else {
       store = await prisma.store.update({
         where: { id: store.id },
-        data: { description: s.description, address: s.address, logoS3Url, rating: s.rating, isActive: true },
+        data: {
+          ownerId: storeOwner.id,
+          description: s.description,
+          address: s.address,
+          logoS3Url,
+          rating: s.rating,
+          isActive: true,
+        },
       });
     }
     totalStores++;
