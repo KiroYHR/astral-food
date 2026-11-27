@@ -4,6 +4,8 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../prisma.js';
 import { config } from '../config/index.js';
 import { serializeUser } from '../utils/serializer.js';
+import { requireAuth, AuthRequest } from '../middleware/auth.middleware.js';
+import { requestSesEmailVerification, getSesEmailVerificationStatus } from '../services/sesService.js';
 
 export const authRouter = Router();
 
@@ -46,12 +48,16 @@ authRouter.post('/register', async (req: Request, res: Response) => {
       { expiresIn: config.jwtExpiresIn as any }
     );
 
+    const emailVerification = await requestSesEmailVerification(user.email);
+
     return res.status(201).json({
       accessToken,
       access_token: accessToken,
       tokenType: 'Bearer',
       token_type: 'Bearer',
       user: serializeUser(user),
+      emailVerification,
+      email_verification: emailVerification,
     });
   } catch (error) {
     console.error('[AUTH REGISTER ERROR]', error);
@@ -122,5 +128,55 @@ authRouter.get('/me', async (req: Request, res: Response) => {
     return res.json(serializeUser(user));
   } catch {
     return res.status(401).json({ error: 'Token không hợp lệ hoặc đã hết hạn.' });
+  }
+});
+
+// Kiểm tra trạng thái xác thực email AWS SES của người dùng hiện tại
+authRouter.get('/email-verification-status', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as AuthRequest).user?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: 'Token không hợp lệ.' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'Không tìm thấy tài khoản người dùng.' });
+    }
+
+    const result = await getSesEmailVerificationStatus(user.email);
+    return res.json(result);
+  } catch (error) {
+    console.error('[AUTH EMAIL STATUS ERROR]', error);
+    return res.status(500).json({ error: 'Không thể kiểm tra trạng thái xác thực email.' });
+  }
+});
+
+// Gửi lại email xác thực AWS SES cho người dùng hiện tại
+authRouter.post('/resend-verification', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as AuthRequest).user?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: 'Token không hợp lệ.' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'Không tìm thấy tài khoản người dùng.' });
+    }
+
+    const result = await requestSesEmailVerification(user.email);
+    return res.json(result);
+  } catch (error) {
+    console.error('[AUTH RESEND VERIFICATION ERROR]', error);
+    return res.status(500).json({ error: 'Không thể gửi lại email xác thực.' });
   }
 });
