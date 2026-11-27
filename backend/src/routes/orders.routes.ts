@@ -91,10 +91,10 @@ export async function assertStoreOwnership(
   storeId: string,
   req: AuthRequest,
   res: Response
-): Promise<{ id: string; ownerId: string } | null> {
+): Promise<{ id: string; ownerId: string; isActive: boolean } | null> {
   const store = await prisma.store.findUnique({
     where: { id: storeId },
-    select: { id: true, ownerId: true },
+    select: { id: true, ownerId: true, isActive: true },
   });
 
   if (!store) {
