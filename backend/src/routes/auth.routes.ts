@@ -5,7 +5,11 @@ import { prisma } from '../prisma.js';
 import { config } from '../config/index.js';
 import { serializeUser } from '../utils/serializer.js';
 import { requireAuth, AuthRequest } from '../middleware/auth.middleware.js';
-import { requestSesEmailVerification, getSesEmailVerificationStatus } from '../services/sesService.js';
+import {
+  requestSesEmailVerification,
+  getSesEmailVerificationStatus,
+  sendWelcomeVerifiedEmail,
+} from '../services/sesService.js';
 
 export const authRouter = Router();
 
@@ -141,15 +145,31 @@ authRouter.get('/email-verification-status', requireAuth, async (req: Request, r
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { email: true },
+      select: { email: true, fullName: true },
     });
 
     if (!user) {
       return res.status(404).json({ error: 'Không tìm thấy tài khoản người dùng.' });
     }
 
+    const notifyWelcome =
+      req.query.notifyWelcome === 'true' || req.query.notify_welcome === 'true';
     const result = await getSesEmailVerificationStatus(user.email);
-    return res.json(result);
+
+    if (notifyWelcome && result.verified) {
+      const welcomeSent = await sendWelcomeVerifiedEmail(user.email, user.fullName);
+      return res.json({
+        ...result,
+        welcomeEmailSent: welcomeSent,
+        welcome_email_sent: welcomeSent,
+      });
+    }
+
+    return res.json({
+      ...result,
+      welcomeEmailSent: false,
+      welcome_email_sent: false,
+    });
   } catch (error) {
     console.error('[AUTH EMAIL STATUS ERROR]', error);
     return res.status(500).json({ error: 'Không thể kiểm tra trạng thái xác thực email.' });

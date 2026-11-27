@@ -2,6 +2,7 @@ import {
   SESClient,
   VerifyEmailIdentityCommand,
   GetIdentityVerificationAttributesCommand,
+  SendEmailCommand,
 } from '@aws-sdk/client-ses';
 import { config } from '../config/index.js';
 
@@ -13,6 +14,20 @@ export interface SesVerificationResult {
   sent: boolean;
   verified: boolean;
   message: string;
+  welcomeEmailSent?: boolean;
+  welcome_email_sent?: boolean;
+}
+
+// Chống gửi trùng email chào mừng khi Frontend polling hoặc chuyển tab nhiều lần
+const welcomeEmailSentCache = new Set<string>();
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function getSESClient(): SESClient {
@@ -145,5 +160,116 @@ export async function requestSesEmailVerification(email: string): Promise<SesVer
       message:
         'Đăng ký thành công nhưng chưa thể gửi email xác thực AWS SES. Bạn có thể bấm gửi lại sau.',
     };
+  }
+}
+
+/**
+ * Gửi email chào mừng mang thương hiệu AstralFood ngay khi email vừa xác thực AWS SES thành công.
+ * Mỗi địa chỉ email chỉ gửi tối đa 1 lần trong vòng đời process và không bao giờ throw lỗi.
+ */
+export async function sendWelcomeVerifiedEmail(email: string, fullName?: string): Promise<boolean> {
+  const normalizedEmail = (email || '').trim().toLowerCase();
+  if (!normalizedEmail) {
+    return false;
+  }
+
+  if (process.env.LOCAL_SIMULATION === 'true') {
+    console.log(`[SES WELCOME][LOCAL] Mô phỏng gửi email chào mừng tới ${normalizedEmail}`);
+    return true;
+  }
+
+  if (welcomeEmailSentCache.has(normalizedEmail)) {
+    return false;
+  }
+
+  // Đánh dấu trước khi gọi AWS SES để chặn race condition khi Frontend polling song song
+  welcomeEmailSentCache.add(normalizedEmail);
+
+  const displayName = escapeHtml((fullName || '').trim() || 'bạn');
+  const safeEmail = escapeHtml(normalizedEmail);
+  const subject = '🎉 Xác thực email AstralFood thành công!';
+  const textBody = [
+    `Xin chào ${(fullName || '').trim() || 'bạn'},`,
+    '',
+    `Email ${normalizedEmail} của bạn đã được xác thực thành công trên hệ thống AWS SES của AstralFood.`,
+    'Từ giờ khi bạn đặt món trên AstralFood, mọi thông báo xác nhận đơn hàng, cập nhật trạng thái giao hàng và hóa đơn điện tử PDF sẽ tự động gửi về hộp thư này.',
+    '',
+    'Trải nghiệm đặt món ngay tại: https://dl2uzojz50nh6.cloudfront.net',
+    '',
+    'Trân trọng,',
+    'Đội ngũ AstralFood',
+  ].join('\n');
+
+  const htmlBody = `<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <title>Xác thực email AstralFood thành công</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #FFFDF9; margin: 0; padding: 24px; color: #1E293B;">
+  <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 14px; border: 1px solid #ffedd5; overflow: hidden; box-shadow: 0 4px 14px rgba(255, 90, 31, 0.08);">
+    <div style="background: linear-gradient(135deg, #FF5A1F 0%, #F59E0B 100%); padding: 26px 24px; text-align: center; color: #ffffff;">
+      <h1 style="margin: 0; font-size: 24px; letter-spacing: 0.5px;">ASTRALFOOD</h1>
+      <p style="margin: 8px 0 0 0; font-size: 14px; opacity: 0.95;">Xác thực email thành công</p>
+    </div>
+    <div style="padding: 26px 24px;">
+      <p style="font-size: 15px; margin-top: 0;">Xin chào <strong>${displayName}</strong>,</p>
+      <p style="font-size: 14px; color: #475569; line-height: 1.6;">
+        Chúc mừng! Địa chỉ email <strong>${safeEmail}</strong> của bạn đã được xác thực thành công trên hệ thống thông báo <strong>AWS SES</strong> của <strong>AstralFood</strong>.
+      </p>
+      <div style="background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 10px; padding: 14px 16px; margin: 18px 0; font-size: 13px; color: #065F46; line-height: 1.55;">
+        Từ giờ, mỗi khi bạn đặt món trên AstralFood, hệ thống sẽ tự động gửi:
+        <ul style="margin: 8px 0 0 18px; padding: 0;">
+          <li>Email xác nhận đơn hàng mới ngay khi đặt món</li>
+          <li>Thông báo cập nhật trạng thái đơn theo thời gian thực</li>
+          <li>Đường dẫn tải hóa đơn điện tử PDF lưu trên AWS S3</li>
+        </ul>
+      </div>
+      <p style="text-align: center; margin: 24px 0 8px 0;">
+        <a href="https://dl2uzojz50nh6.cloudfront.net" style="display: inline-block; background: linear-gradient(135deg, #FF5A1F 0%, #F59E0B 100%); color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-weight: bold; font-size: 14px;">
+          Khám phá món ngon ngay
+        </a>
+      </p>
+      <hr style="border: none; border-top: 1px dashed #E2E8F0; margin: 22px 0 14px 0;">
+      <p style="font-size: 12px; color: #94A3B8; text-align: center; margin: 0;">
+        Email được gửi tự động bởi hệ thống AstralFood trên AWS Cloud.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  try {
+    const client = getSESClient();
+    await client.send(
+      new SendEmailCommand({
+        Source: `AstralFood <${config.aws.sesSenderEmail}>`,
+        Destination: {
+          ToAddresses: [normalizedEmail],
+        },
+        Message: {
+          Subject: {
+            Data: subject,
+            Charset: 'UTF-8',
+          },
+          Body: {
+            Html: {
+              Data: htmlBody,
+              Charset: 'UTF-8',
+            },
+            Text: {
+              Data: textBody,
+              Charset: 'UTF-8',
+            },
+          },
+        },
+      })
+    );
+
+    return true;
+  } catch (error) {
+    welcomeEmailSentCache.delete(normalizedEmail);
+    console.error('[SES WELCOME ERROR] Lỗi khi gửi email chào mừng AstralFood:', error);
+    return false;
   }
 }
