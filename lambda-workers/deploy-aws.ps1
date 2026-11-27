@@ -38,6 +38,32 @@ if ($LASTEXITCODE -ne 0) {
   Write-Host "      S3 bucket da ton tai: $InvoiceBucket" -ForegroundColor Green
 }
 
+# 2b. Mo Public Read (chi s3:GetObject tren invoices/*) de khach hang/Frontend tai hoa don PDF khong bi 403 Forbidden
+Write-Host "      Cau hinh Public Read Policy chi cho $InvoiceBucket/invoices/* ..." -ForegroundColor Yellow
+aws s3api put-public-access-block `
+  --bucket $InvoiceBucket `
+  --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=false,RestrictPublicBuckets=false" `
+  --region $Region | Out-Null
+
+$BucketPolicy = @{
+  Version = "2012-10-17"
+  Statement = @(
+    @{
+      Sid = "PublicReadInvoicesOnly"
+      Effect = "Allow"
+      Principal = "*"
+      Action = "s3:GetObject"
+      Resource = "arn:aws:s3:::${InvoiceBucket}/invoices/*"
+    }
+  )
+} | ConvertTo-Json -Depth 5 -Compress
+
+aws s3api put-bucket-policy `
+  --bucket $InvoiceBucket `
+  --policy $BucketPolicy `
+  --region $Region | Out-Null
+Write-Host "      Da mo Public Read cho $InvoiceBucket/invoices/*" -ForegroundColor Green
+
 # 3. Verify Email gui tren Amazon SES
 Write-Host "[3/6] Gui yeu cau xac minh email tren Amazon SES: $SenderEmail ..." -ForegroundColor Yellow
 aws ses verify-email-identity --email-address $SenderEmail --region $Region | Out-Null
