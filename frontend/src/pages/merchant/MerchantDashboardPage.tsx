@@ -7,9 +7,7 @@ import {
   Utensils,
   Store as StoreIcon,
   Star,
-  ExternalLink,
   ChevronDown,
-  ArrowLeft,
   CheckCircle2,
   MapPin,
   FileText,
@@ -48,7 +46,26 @@ export const MerchantDashboardPage: React.FC = () => {
   const [newStoreName, setNewStoreName] = useState('');
   const [newStoreAddress, setNewStoreAddress] = useState('');
   const [newStoreDesc, setNewStoreDesc] = useState('');
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [isCreatingStore, setIsCreatingStore] = useState(false);
+
+  const STORE_CATEGORY_OPTIONS = [
+    'Cơm tấm',
+    'Phở & Bún',
+    'Bún đậu & Cuốn',
+    'Trà sữa & Cafe',
+    'Gà rán & Burger',
+    'Bánh mì & Xôi',
+    'Ăn vặt',
+    'Chay & Healthy',
+    'Lẩu & Nướng',
+  ];
+
+  const toggleStoreCategory = (cat: string) => {
+    setSelectedCategories((prev) =>
+      prev.includes(cat) ? prev.filter((item) => item !== cat) : [...prev, cat]
+    );
+  };
   const [isCheckingApproval, setIsCheckingApproval] = useState(false);
 
   // Load all data for the active store (multi-tenant filtered by owner)
@@ -227,16 +244,22 @@ export const MerchantDashboardPage: React.FC = () => {
       toast.error('Vui lòng nhập Tên cửa hàng và Địa chỉ!');
       return;
     }
+    if (selectedCategories.length === 0) {
+      toast.error('Vui lòng chọn ít nhất 1 danh mục món bán!');
+      return;
+    }
     setIsCreatingStore(true);
     try {
       const created = await storeService.createStore({
         name: newStoreName.trim(),
         address: newStoreAddress.trim(),
         description: newStoreDesc.trim(),
+        category_tag: selectedCategories.join(', '),
       });
       setNewStoreName('');
       setNewStoreAddress('');
       setNewStoreDesc('');
+      setSelectedCategories([]);
       selectedStoreIdRef.current = created.id;
       if (!created.is_active) {
         toast.success(
@@ -337,7 +360,7 @@ export const MerchantDashboardPage: React.FC = () => {
                       </div>
                       <div className="flex items-center gap-2 text-[10px] text-gray-500 font-semibold">
                         <span className="flex items-center text-amber-500 font-bold">
-                          <Star className="w-3 h-3 fill-amber-500" /> {selectedStore.rating || 4.8}
+                          <Star className="w-3 h-3 fill-amber-500" /> {(selectedStore.review_count ?? 0) > 0 && Number(selectedStore.rating) > 0 ? Number(selectedStore.rating).toFixed(1) : 'Mới'}
                         </span>
                         <span>•</span>
                         <span
@@ -408,7 +431,7 @@ export const MerchantDashboardPage: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-2 text-[10px] text-gray-500 font-semibold">
                       <span className="flex items-center text-amber-500 font-bold">
-                        <Star className="w-3 h-3 fill-amber-500" /> {selectedStore.rating || 4.8}
+                        <Star className="w-3 h-3 fill-amber-500" /> {(selectedStore.review_count ?? 0) > 0 && Number(selectedStore.rating) > 0 ? Number(selectedStore.rating).toFixed(1) : 'Mới'}
                       </span>
                       <span>•</span>
                       <span
@@ -463,28 +486,7 @@ export const MerchantDashboardPage: React.FC = () => {
                 </span>
               ) : null}
 
-              {/* Nút Xem trang quán dưới góc nhìn Khách hàng */}
-              {selectedStore && (selectedStore.is_active || user?.role === 'ADMIN') && (
-                <Link
-                  to={`/stores/${selectedStore.id}`}
-                  className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 text-white font-bold text-xs shadow-xs hover:opacity-95 flex items-center gap-1.5 cursor-pointer transition-all"
-                  title="Xem trang thực đơn của quán dưới góc nhìn khách hàng"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Xem trang quán (Khách hàng)</span>
-                  <span className="sm:hidden">Xem quán</span>
-                </Link>
-              )}
 
-              {/* Link chuyển nhanh sang trang Đặt đồ ăn Khách hàng */}
-              <Link
-                to="/"
-                className="px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold text-xs flex items-center gap-1.5 transition-colors"
-                title="Chuyển sang giao diện Khách hàng để đặt món"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span className="hidden lg:inline">🛒 Đặt đồ ăn (Khách)</span>
-              </Link>
 
               {/* Đăng xuất */}
               <button
@@ -631,6 +633,36 @@ export const MerchantDashboardPage: React.FC = () => {
               </div>
 
               <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-gray-700">
+                    Danh mục món bán <span className="text-rose-500">*</span>
+                  </label>
+                  <span className="text-[11px] font-semibold text-gray-400">
+                    Đã chọn: {selectedCategories.length}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {STORE_CATEGORY_OPTIONS.map((cat) => {
+                    const isSelected = selectedCategories.includes(cat);
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => toggleStoreCategory(cat)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-[#FF5A1F] text-white border-[#FF5A1F] shadow-xs'
+                            : 'bg-[#FFFDF9] text-gray-700 border-gray-200 hover:border-orange-300 hover:bg-orange-50/50'
+                        }`}
+                      >
+                        {isSelected ? `✓ ${cat}` : cat}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1.5">
                   Mô tả ngắn <span className="text-gray-400 font-normal">(tùy chọn)</span>
                 </label>
@@ -678,27 +710,27 @@ export const MerchantDashboardPage: React.FC = () => {
             <div className="p-4 rounded-2xl bg-[#FFFDF9] border border-orange-100 space-y-2 text-xs sm:text-sm text-gray-700">
               <p><span className="font-bold text-gray-900">Tên quán:</span> {selectedStore.name}</p>
               <p><span className="font-bold text-gray-900">Địa chỉ:</span> {selectedStore.address}</p>
+              {selectedStore.category_tag && (
+                <p><span className="font-bold text-gray-900">Danh mục món bán:</span> {selectedStore.category_tag}</p>
+              )}
               {selectedStore.description && (
                 <p><span className="font-bold text-gray-900">Mô tả:</span> {selectedStore.description}</p>
               )}
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3">
+            <div className="space-y-2.5">
               <button
                 type="button"
                 onClick={handleCheckApprovalStatus}
                 disabled={isCheckingApproval}
-                className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 hover:opacity-95 text-white font-bold text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 hover:opacity-95 text-white font-bold text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
               >
                 <RefreshCw className={`w-4 h-4 ${isCheckingApproval ? 'animate-spin' : ''}`} />
                 <span>{isCheckingApproval ? 'Đang kiểm tra...' : 'Kiểm tra trạng thái duyệt'}</span>
               </button>
-              <Link
-                to="/"
-                className="py-3 px-4 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs sm:text-sm text-center"
-              >
-                Trong lúc chờ, dạo xem món ăn
-              </Link>
+              <p className="text-[11px] text-gray-400 text-center">
+                Hệ thống tự động kiểm tra mỗi 5 giây. Bạn có thể bấm Đăng xuất ở góc trên để đổi tài khoản.
+              </p>
             </div>
           </div>
         ) : (

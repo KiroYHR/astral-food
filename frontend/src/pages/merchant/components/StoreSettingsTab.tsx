@@ -7,9 +7,7 @@ import {
   UploadCloud,
   CheckCircle2,
   Save,
-  Eye,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import type { Store } from '../../../types';
 import { storeService, mediaService } from '../../../api/services';
@@ -118,14 +116,7 @@ export const StoreSettingsTab: React.FC<StoreSettingsTabProps> = ({
           </p>
         </div>
 
-        <Link
-          to={`/stores/${store.id}`}
-          target="_blank"
-          className="px-4 py-2.5 rounded-xl bg-orange-50 hover:bg-orange-100 text-[#FF5A1F] border border-orange-200 font-bold text-xs flex items-center gap-2 cursor-pointer transition-colors self-start sm:self-auto"
-        >
-          <Eye className="w-4 h-4" />
-          <span>Xem trang quán (Góc nhìn Khách)</span>
-        </Link>
+
       </div>
 
       {/* 2. Form cài đặt */}

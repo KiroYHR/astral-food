@@ -6,6 +6,8 @@ import {
   Edit2,
   Trash2,
   Layers,
+  Check,
+  X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { Product, Category } from '../../../types';
@@ -35,10 +37,15 @@ export const MenuManagerTab: React.FC<MenuManagerTabProps> = ({
   const [newCategoryName, setNewCategoryName] = useState('');
   const [isSubmittingCat, setIsSubmittingCat] = useState(false);
 
+  // Sửa / xóa danh mục state
+  const [editingCatId, setEditingCatId] = useState<string | null>(null);
+  const [editingCatName, setEditingCatName] = useState('');
+  const [isUpdatingCat, setIsUpdatingCat] = useState(false);
+
   // Toggle trạng thái còn hàng / hết hàng
   const handleToggleAvailability = async (productId: string, currentStatus: boolean) => {
     try {
-      await productService.toggleProductAvailability(productId);
+      await productService.toggleProductAvailability(productId, !currentStatus);
       toast.success(
         currentStatus
           ? 'Đã chuyển món sang trạng thái: Tạm hết hàng'
@@ -46,7 +53,7 @@ export const MenuManagerTab: React.FC<MenuManagerTabProps> = ({
       );
       onRefreshData();
     } catch (err: any) {
-      toast.error(err.message || 'Lỗi khi cập nhật trạng thái món ăn');
+      toast.error(err?.response?.data?.error || err?.message || 'Lỗi khi cập nhật trạng thái món ăn');
     }
   };
 
@@ -62,7 +69,7 @@ export const MenuManagerTab: React.FC<MenuManagerTabProps> = ({
         toast.success(`Đã xóa món "${product.name}" thành công!`);
         onRefreshData();
       } catch (err: any) {
-        toast.error(err.message || 'Lỗi khi xóa món ăn');
+        toast.error(err?.response?.data?.error || err?.message || 'Lỗi khi xóa món ăn');
       }
     }
   };
@@ -78,14 +85,57 @@ export const MenuManagerTab: React.FC<MenuManagerTabProps> = ({
     try {
       setIsSubmittingCat(true);
       await storeService.createCategory(storeId, newCategoryName.trim());
-      toast.success(`Đã tạo danh mục "${newCategoryName}" thành công!`);
+      toast.success(`Đã tạo danh mục "${newCategoryName.trim()}" thành công!`);
       setNewCategoryName('');
       setIsAddingCategory(false);
       onRefreshData();
     } catch (err: any) {
-      toast.error(err.message || 'Lỗi khi tạo danh mục mới');
+      toast.error(err?.response?.data?.error || err?.message || 'Lỗi khi tạo danh mục mới');
     } finally {
       setIsSubmittingCat(false);
+    }
+  };
+
+  // Đổi tên danh mục
+  const handleRenameCategory = async (catId: string) => {
+    const trimmed = editingCatName.trim();
+    if (!trimmed) {
+      toast.error('Tên danh mục không được để trống');
+      return;
+    }
+    try {
+      setIsUpdatingCat(true);
+      await storeService.updateCategory(storeId, catId, trimmed);
+      toast.success(`Đã đổi tên danh mục thành "${trimmed}"`);
+      setEditingCatId(null);
+      setEditingCatName('');
+      onRefreshData();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || err?.message || 'Lỗi khi cập nhật tên danh mục');
+    } finally {
+      setIsUpdatingCat(false);
+    }
+  };
+
+  // Xóa danh mục rỗng
+  const handleDeleteCategory = async (cat: Category) => {
+    if (
+      !window.confirm(`Bạn có chắc chắn muốn xóa danh mục "${cat.name}" không?`)
+    ) {
+      return;
+    }
+    try {
+      setIsUpdatingCat(true);
+      await storeService.deleteCategory(storeId, cat.id);
+      toast.success(`Đã xóa danh mục "${cat.name}"`);
+      if (selectedCategory === cat.id) {
+        setSelectedCategory('ALL');
+      }
+      onRefreshData();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || err?.message || 'Không thể xóa danh mục này');
+    } finally {
+      setIsUpdatingCat(false);
     }
   };
 
@@ -107,6 +157,194 @@ export const MenuManagerTab: React.FC<MenuManagerTabProps> = ({
     }).format(amount);
   };
 
+  const renderProductCard = (product: Product, categoryName: string) => (
+    <div
+      key={product.id}
+      className="bg-white rounded-2xl p-5 border border-orange-100 shadow-xs hover:shadow-md transition-all flex flex-col justify-between space-y-4 group"
+    >
+      <div className="space-y-3">
+        {/* Image & Price Tag */}
+        <div className="relative rounded-xl overflow-hidden aspect-video bg-gray-100">
+          <img
+            src={product.image_s3_url}
+            alt={product.name}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          />
+          {/* Category Pill */}
+          <span className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md text-white text-[10px] font-bold">
+            {categoryName}
+          </span>
+          {/* Price Tag */}
+          <span className="absolute bottom-2.5 right-2.5 px-3 py-1 rounded-xl bg-white/95 backdrop-blur-md text-gray-900 font-black text-xs shadow-md">
+            {formatVND(product.price)}
+          </span>
+        </div>
+
+        {/* Name & Description */}
+        <div>
+          <h3 className="font-bold text-gray-900 text-sm line-clamp-1">
+            {product.name}
+          </h3>
+          <p className="text-xs text-gray-500 mt-1 line-clamp-2 leading-relaxed">
+            {product.description}
+          </p>
+        </div>
+
+        {/* Tags */}
+        {product.tags && product.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {product.tags.slice(0, 3).map((tag, i) => (
+              <span
+                key={i}
+                className="px-2 py-0.5 rounded-md bg-orange-50 text-[#FF5A1F] text-[10px] font-bold border border-orange-100"
+              >
+                #{tag}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Action Bar & 1-Click Toggle */}
+      <div className="pt-3 border-t border-gray-100 flex items-center justify-between">
+        {/* Nút Gạt Còn Hàng / Hết Hàng (1 chạm) */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              handleToggleAvailability(product.id, product.is_available)
+            }
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+              product.is_available ? 'bg-emerald-500' : 'bg-gray-300'
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                product.is_available ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
+          <span
+            className={`text-xs font-bold ${
+              product.is_available ? 'text-emerald-700' : 'text-gray-400'
+            }`}
+          >
+            {product.is_available ? 'Còn hàng' : 'Tạm hết'}
+          </span>
+        </div>
+
+        {/* Sửa & Xóa Buttons */}
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              setEditingProduct(product);
+              setIsModalOpen(true);
+            }}
+            className="p-2 rounded-xl text-gray-500 hover:text-[#FF5A1F] hover:bg-orange-50 transition-colors cursor-pointer"
+            title="Chỉnh sửa món ăn"
+          >
+            <Edit2 className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDeleteProduct(product)}
+            className="p-2 rounded-xl text-gray-500 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+            title="Xóa món ăn"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderCategoryHeader = (cat: Category, count: number) => {
+    const isEditing = editingCatId === cat.id;
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-orange-100">
+        {isEditing ? (
+          <div className="flex items-center gap-2 flex-1 max-w-md">
+            <input
+              type="text"
+              value={editingCatName}
+              onChange={(e) => setEditingCatName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleRenameCategory(cat.id);
+                }
+              }}
+              className="px-3 py-1.5 rounded-lg border border-orange-300 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#FF5A1F] flex-1 bg-white"
+              autoFocus
+            />
+            <button
+              type="button"
+              disabled={isUpdatingCat}
+              onClick={() => handleRenameCategory(cat.id)}
+              className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
+            >
+              <Check className="w-3.5 h-3.5" /> Lưu
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setEditingCatId(null);
+                setEditingCatName('');
+              }}
+              className="px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-bold flex items-center gap-1 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" /> Hủy
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Layers className="w-4 h-4 text-[#FF5A1F]" />
+            <h3 className="text-base font-black text-gray-900">{cat.name}</h3>
+            <span className="px-2 py-0.5 rounded-full bg-orange-100 text-[#FF5A1F] text-[11px] font-bold">
+              {count} món
+            </span>
+          </div>
+        )}
+
+        {!isEditing && (
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setEditingCatId(cat.id);
+                setEditingCatName(cat.name);
+              }}
+              className="px-2.5 py-1 rounded-lg text-xs font-bold text-gray-600 hover:text-[#FF5A1F] hover:bg-orange-50 transition-colors flex items-center gap-1 cursor-pointer"
+              title="Đổi tên danh mục"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+              <span>Đổi tên</span>
+            </button>
+            {count === 0 && (
+              <button
+                type="button"
+                disabled={isUpdatingCat}
+                onClick={() => handleDeleteCategory(cat)}
+                className="px-2.5 py-1 rounded-lg text-xs font-bold text-rose-600 hover:bg-rose-50 transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                title="Xóa danh mục rỗng"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Xóa</span>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const showGroupedView = selectedCategory === 'ALL' && searchQuery.trim() === '';
+  const knownCategoryIds = new Set(categories.map((c) => c.id));
+  const uncategorizedProducts = products.filter((p) => !knownCategoryIds.has(p.category_id));
+  const activeCategoryObj =
+    selectedCategory !== 'ALL' ? categories.find((c) => c.id === selectedCategory) : null;
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* 1. Header & Nút Thêm Món Mới */}
@@ -117,14 +355,18 @@ export const MenuManagerTab: React.FC<MenuManagerTabProps> = ({
             Quản Lý Thực Đơn & AI Menu Copilot
           </h2>
           <p className="text-xs sm:text-sm text-gray-500 mt-1">
-            Bật/tắt trạng thái món ăn 1 chạm, hỗ trợ tạo nội dung tự động bằng AI và lưu trữ S3
+            Phân nhóm theo từng danh mục, bật/tắt trạng thái món ăn 1 chạm và lưu ảnh trên Amazon S3
           </p>
         </div>
 
         {/* Nút "+ Thêm Món Mới" */}
         <button
           type="button"
-          id="btn-add-product" onClick={() => { setEditingProduct(null); setIsModalOpen(true); }}
+          id="btn-add-product"
+          onClick={() => {
+            setEditingProduct(null);
+            setIsModalOpen(true);
+          }}
           className="px-5 py-3 rounded-xl bg-gradient-to-r from-orange-500 via-orange-600 to-rose-500 text-white font-black text-xs shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer self-start md:self-auto"
         >
           <Plus className="w-4 h-4" />
@@ -227,123 +469,80 @@ export const MenuManagerTab: React.FC<MenuManagerTabProps> = ({
       </div>
 
       {/* 3. Bảng / Danh Sách Món Ăn */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {filteredProducts.map((product) => {
-          const categoryName =
-            categories.find((c) => c.id === product.category_id)?.name ||
-            'Món ăn';
+      {showGroupedView ? (
+        <div className="space-y-8">
+          {categories.map((cat) => {
+            const catProducts = products.filter((p) => p.category_id === cat.id);
+            return (
+              <div key={cat.id} className="space-y-4">
+                {renderCategoryHeader(cat, catProducts.length)}
 
-          return (
-            <div
-              key={product.id}
-              className="bg-white rounded-2xl p-5 border border-orange-100 shadow-xs hover:shadow-md transition-all flex flex-col justify-between space-y-4 group"
-            >
-              <div className="space-y-3">
-                {/* Image & Price Tag */}
-                <div className="relative rounded-xl overflow-hidden aspect-video bg-gray-100">
-                  <img
-                    src={product.image_s3_url}
-                    alt={product.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                  {/* Category Pill */}
-                  <span className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md text-white text-[10px] font-bold">
-                    {categoryName}
-                  </span>
-                  {/* Price Tag */}
-                  <span className="absolute bottom-2.5 right-2.5 px-3 py-1 rounded-xl bg-white/95 backdrop-blur-md text-gray-900 font-black text-xs shadow-md">
-                    {formatVND(product.price)}
-                  </span>
-                </div>
-
-                {/* Name & Description */}
-                <div>
-                  <h3 className="font-bold text-gray-900 text-sm line-clamp-1">
-                    {product.name}
-                  </h3>
-                  <p className="text-xs text-gray-500 mt-1 line-clamp-2 leading-relaxed">
-                    {product.description}
-                  </p>
-                </div>
-
-                {/* Tags */}
-                {product.tags && product.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {product.tags.slice(0, 3).map((tag, i) => (
-                      <span
-                        key={i}
-                        className="px-2 py-0.5 rounded-md bg-orange-50 text-[#FF5A1F] text-[10px] font-bold border border-orange-100"
-                      >
-                        #{tag}
-                      </span>
-                    ))}
+                {catProducts.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {catProducts.map((product) =>
+                      renderProductCard(product, product.category_name || cat.name)
+                    )}
+                  </div>
+                ) : (
+                  <div className="bg-white/70 p-6 rounded-2xl border border-dashed border-orange-200 text-center text-xs text-gray-400">
+                    Danh mục <strong>{cat.name}</strong> chưa có món ăn nào. Hãy bấm{' '}
+                    <span className="text-[#FF5A1F] font-bold">Thêm Món Ăn Mới</span> để thêm món vào nhóm này.
                   </div>
                 )}
               </div>
+            );
+          })}
 
-              {/* Action Bar & 1-Click Toggle */}
-              <div className="pt-3 border-t border-gray-100 flex items-center justify-between">
-                {/* Nút Gạt Còn Hàng / Hết Hàng (1 chạm) */}
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handleToggleAvailability(product.id, product.is_available)
-                    }
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      product.is_available ? 'bg-emerald-500' : 'bg-gray-300'
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                        product.is_available ? 'translate-x-5' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
-                  <span
-                    className={`text-xs font-bold ${
-                      product.is_available ? 'text-emerald-700' : 'text-gray-400'
-                    }`}
-                  >
-                    {product.is_available ? 'Còn hàng' : 'Tạm hết'}
-                  </span>
-                </div>
-
-                {/* Sửa & Xóa Buttons */}
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingProduct(product);
-                      setIsModalOpen(true);
-                    }}
-                    className="p-2 rounded-xl text-gray-500 hover:text-[#FF5A1F] hover:bg-orange-50 transition-colors cursor-pointer"
-                    title="Chỉnh sửa món ăn"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteProduct(product)}
-                    className="p-2 rounded-xl text-gray-500 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                    title="Xóa món ăn"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+          {uncategorizedProducts.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 pb-2.5 border-b border-orange-100">
+                <Layers className="w-4 h-4 text-gray-400" />
+                <h3 className="text-base font-black text-gray-900">Khác</h3>
+                <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-[11px] font-bold">
+                  {uncategorizedProducts.length} món
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {uncategorizedProducts.map((product) =>
+                  renderProductCard(product, product.category_name || 'Khác')
+                )}
               </div>
             </div>
-          );
-        })}
-      </div>
+          )}
 
-      {filteredProducts.length === 0 && (
-        <div className="bg-white p-12 rounded-2xl border border-gray-200 text-center text-gray-500 space-y-3">
-          <Utensils className="w-12 h-12 text-gray-300 mx-auto" />
-          <p className="font-bold text-gray-800">Không tìm thấy món ăn nào</p>
-          <p className="text-xs text-gray-400">
-            Hãy thử tìm với từ khóa khác hoặc bấm "+ Thêm Món Ăn Mới" để mở rộng thực đơn.
-          </p>
+          {categories.length === 0 && products.length === 0 && (
+            <div className="bg-white p-12 rounded-2xl border border-gray-200 text-center text-gray-500 space-y-3">
+              <Utensils className="w-12 h-12 text-gray-300 mx-auto" />
+              <p className="font-bold text-gray-800">Thực đơn chưa có món ăn nào</p>
+              <p className="text-xs text-gray-400">
+                Hãy bấm "Thêm Món Ăn Mới" để bắt đầu tạo thực đơn cho quán.
+              </p>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {activeCategoryObj && renderCategoryHeader(activeCategoryObj, filteredProducts.length)}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {filteredProducts.map((product) => {
+              const categoryName =
+                product.category_name ||
+                categories.find((c) => c.id === product.category_id)?.name ||
+                'Món ăn';
+              return renderProductCard(product, categoryName);
+            })}
+          </div>
+
+          {filteredProducts.length === 0 && (
+            <div className="bg-white p-12 rounded-2xl border border-gray-200 text-center text-gray-500 space-y-3">
+              <Utensils className="w-12 h-12 text-gray-300 mx-auto" />
+              <p className="font-bold text-gray-800">Không tìm thấy món ăn nào</p>
+              <p className="text-xs text-gray-400">
+                Hãy thử tìm với từ khóa khác hoặc bấm "Thêm Món Ăn Mới" để mở rộng thực đơn.
+              </p>
+            </div>
+          )}
         </div>
       )}
 

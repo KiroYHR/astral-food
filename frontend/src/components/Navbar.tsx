@@ -9,8 +9,6 @@ import {
   FileText,
   LogOut,
   ChevronDown,
-  ChefHat,
-  ShieldCheck,
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useCartStore } from '../store/useCartStore';
@@ -136,26 +134,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onSearch, searchQuery }) => {
           </div>
         </div>
 
-        {/* Right Actions: Role Shortcut, Cart & User Account */}
+        {/* Right Actions: Cart & User Account */}
         <div className="flex items-center gap-2.5 shrink-0">
-          {isAuthenticated && user?.role === 'MERCHANT' && (
-            <Link
-              to="/merchant"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-orange-50 hover:bg-orange-100 border border-orange-200 text-[#FF5A1F] text-xs font-extrabold transition-colors"
-            >
-              <ChefHat className="w-4 h-4" />
-              <span>Quản lý quán</span>
-            </Link>
-          )}
-          {isAuthenticated && user?.role === 'ADMIN' && (
-            <Link
-              to="/admin"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 text-xs font-extrabold transition-colors"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span>Quản trị Admin</span>
-            </Link>
-          )}
           {/* Cart Button */}
           <button
             onClick={toggleCart}
@@ -205,28 +185,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onSearch, searchQuery }) => {
                     <p className="text-xs font-bold text-gray-900">{user.full_name}</p>
                     <p className="text-[11px] text-gray-500 truncate">{user.email}</p>
                   </div>
-
-                  {(user.role === 'MERCHANT' || user.role === 'ADMIN') && (
-                    <Link
-                      to="/merchant"
-                      onClick={() => setIsUserMenuOpen(false)}
-                      className="flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-gray-700 hover:bg-orange-50 hover:text-[#FF5A1F] transition-colors"
-                    >
-                      <ChefHat className="w-4 h-4 text-[#FF5A1F]" />
-                      <span>Quản lý cửa hàng</span>
-                    </Link>
-                  )}
-
-                  {user.role === 'ADMIN' && (
-                    <Link
-                      to="/admin"
-                      onClick={() => setIsUserMenuOpen(false)}
-                      className="flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors"
-                    >
-                      <ShieldCheck className="w-4 h-4 text-purple-600" />
-                      <span>Quản trị hệ thống</span>
-                    </Link>
-                  )}
 
                   <Link
                     to="/my-orders"

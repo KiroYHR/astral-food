@@ -6,9 +6,6 @@ import {
   Store,
   Users,
   ShoppingBag,
-  ExternalLink,
-  ChefHat,
-  Home,
   LogOut,
   RefreshCw,
 } from 'lucide-react';
@@ -168,28 +165,7 @@ export const AdminDashboardPage: React.FC = () => {
                 <span className="hidden lg:inline">Làm mới</span>
               </button>
 
-              {/* Sang Merchant Hub */}
-              <Link
-                id="btn-goto-merchant"
-                to="/merchant"
-                className="px-3.5 py-2 rounded-xl bg-orange-50 hover:bg-orange-100 text-[#FF5A1F] border border-orange-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
-                title="Chuyển sang Giao diện Chủ quán"
-              >
-                <ChefHat className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">Merchant Hub</span>
-              </Link>
 
-              {/* Về Trang Chủ Khách Hàng */}
-              <Link
-                id="btn-goto-customer"
-                to="/"
-                className="px-3.5 py-2 rounded-xl bg-gray-900 hover:bg-black text-white font-bold text-xs shadow-xs flex items-center gap-1.5 cursor-pointer transition-colors"
-                title="Về Trang Khách Hàng"
-              >
-                <Home className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">Trang Khách Hàng</span>
-                <ExternalLink className="w-3 h-3 text-gray-400" />
-              </Link>
 
               {/* Đăng xuất */}
               <button

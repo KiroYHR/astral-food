@@ -3,19 +3,24 @@ import {
   Store,
   CheckCircle2,
   Lock,
-  Eye,
   Plus,
   Search,
   MapPin,
   Clock,
-  Star,
   Check,
+  XCircle,
+  ClipboardList,
+  User as UserIcon,
+  Mail,
+  Phone,
+  Calendar,
+  Utensils,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import type { Store as StoreType } from '../../../types';
 import { adminService } from '../../../api/services';
 import QuickStoreModal from './QuickStoreModal';
+import AdminStoreMenuModal from './AdminStoreMenuModal';
 
 interface StoreApprovalTabProps {
   stores: StoreType[];
@@ -29,6 +34,7 @@ export const StoreApprovalTab: React.FC<StoreApprovalTabProps> = ({
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'PENDING' | 'ACTIVE'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [isQuickModalOpen, setIsQuickModalOpen] = useState(false);
+  const [menuModalStoreId, setMenuModalStoreId] = useState<string | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   // Phê duyệt mở quán hoặc Khóa quán
@@ -45,7 +51,29 @@ export const StoreApprovalTab: React.FC<StoreApprovalTabProps> = ({
 
       onRefreshData();
     } catch (err: any) {
-      toast.error(err.message || 'Lỗi khi cập nhật trạng thái quán');
+      toast.error(err?.response?.data?.error || err?.message || 'Lỗi khi cập nhật trạng thái quán');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  // Từ chối & xóa yêu cầu mở cửa hàng đang chờ duyệt
+  const handleRejectStore = async (store: StoreType) => {
+    if (
+      !window.confirm(
+        `Bạn có chắc chắn muốn TỪ CHỐI và XÓA hồ sơ mở quán "${store.name}" không?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setActionLoadingId(store.id);
+      const res = await adminService.rejectStore(store.id);
+      toast.success(res.message || `Đã từ chối hồ sơ quán "${store.name}".`);
+      onRefreshData();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || err?.message || 'Không thể từ chối cửa hàng');
     } finally {
       setActionLoadingId(null);
     }
@@ -70,7 +98,9 @@ export const StoreApprovalTab: React.FC<StoreApprovalTabProps> = ({
       query === '' ||
       s.name.toLowerCase().includes(query) ||
       s.address.toLowerCase().includes(query) ||
-      (s.category_tag && s.category_tag.toLowerCase().includes(query));
+      (s.category_tag && s.category_tag.toLowerCase().includes(query)) ||
+      (s.owner?.full_name && s.owner.full_name.toLowerCase().includes(query)) ||
+      (s.owner?.email && s.owner.email.toLowerCase().includes(query));
 
     return matchesFilter && matchesSearch;
   });
@@ -85,7 +115,7 @@ export const StoreApprovalTab: React.FC<StoreApprovalTabProps> = ({
             Thẩm Định & Phê Duyệt Cửa Hàng Đối Tác
           </h2>
           <p className="text-xs sm:text-sm text-gray-500 mt-1">
-            Kiểm tra hồ sơ an toàn thực phẩm, phê duyệt mở bán trên hệ thống hoặc tạm khóa cửa hàng vi phạm
+            Kiểm tra hồ sơ cửa hàng, phê duyệt hoặc từ chối mở bán và kiểm duyệt thực đơn ngay trong hệ thống Admin
           </p>
         </div>
 
@@ -162,7 +192,7 @@ export const StoreApprovalTab: React.FC<StoreApprovalTabProps> = ({
           <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Tìm theo tên quán, địa chỉ..."
+            placeholder="Tìm theo tên quán, địa chỉ, chủ quán..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-3.5 py-2 rounded-xl border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-[#FF5A1F]"
@@ -174,6 +204,7 @@ export const StoreApprovalTab: React.FC<StoreApprovalTabProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredStores.map((store) => {
           const isLoading = actionLoadingId === store.id;
+          const productsCount = store._count?.products ?? store.products_count ?? 0;
 
           return (
             <div
@@ -185,18 +216,18 @@ export const StoreApprovalTab: React.FC<StoreApprovalTabProps> = ({
               {/* Top Card: Logo, Tên, Trạng thái */}
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     <img
                       src={store.logo_s3_url}
                       alt={store.name}
                       className="w-14 h-14 rounded-2xl object-cover border border-gray-200 shadow-xs shrink-0"
                     />
-                    <div>
+                    <div className="min-w-0">
                       <h3 className="font-bold text-gray-900 text-sm line-clamp-1">
                         {store.name}
                       </h3>
-                      <span className="inline-block text-[10px] font-bold text-[#FF5A1F] bg-orange-50 px-2 py-0.5 rounded-md border border-orange-200/60 mt-0.5">
-                        {store.category_tag || 'Ẩm thực'}
+                      <span className="inline-block text-[10px] font-bold text-[#FF5A1F] bg-orange-50 px-2 py-0.5 rounded-md border border-orange-200/60 mt-0.5 line-clamp-1">
+                        {store.category_tag || 'Chưa phân loại'}
                       </span>
                     </div>
                   </div>
@@ -215,39 +246,79 @@ export const StoreApprovalTab: React.FC<StoreApprovalTabProps> = ({
                   </div>
                 </div>
 
-                {/* Mô tả & Thông tin địa chỉ */}
-                <p className="text-xs text-gray-600 line-clamp-2 leading-relaxed">
-                  {store.description}
-                </p>
+                {/* Mô tả */}
+                {store.description && (
+                  <p className="text-xs text-gray-600 line-clamp-2 leading-relaxed">
+                    {store.description}
+                  </p>
+                )}
 
-                <div className="space-y-1.5 text-xs text-gray-500 pt-2 border-t border-gray-100">
+                {/* Thông tin kiểm duyệt thực tế */}
+                <div className="space-y-1.5 text-xs text-gray-600 pt-2 border-t border-gray-100">
                   <div className="flex items-start gap-1.5">
                     <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
                     <span className="line-clamp-1">{store.address}</span>
                   </div>
-                  <div className="flex items-center justify-between text-[11px] pt-1">
-                    <span className="flex items-center gap-1 text-amber-500 font-bold">
-                      <Star className="w-3 h-3 fill-amber-500" /> {store.rating || 4.8} / 5.0
+
+                  <div className="flex items-center gap-1.5">
+                    <UserIcon className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                    <span className="font-semibold text-gray-800 truncate">
+                      Chủ quán: {store.owner?.full_name || 'Chủ quán'}
                     </span>
-                    <span className="text-gray-400">
-                      Giao: {store.delivery_time || '20-30 phút'}
+                  </div>
+
+                  {store.owner?.email && (
+                    <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
+                      <Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                      <span className="truncate">{store.owner.email}</span>
+                    </div>
+                  )}
+
+                  {store.owner?.phone && (
+                    <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
+                      <Phone className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                      <span>{store.owner.phone}</span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between text-[11px] pt-1 text-gray-500">
+                    <span className="flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                      Gửi hồ sơ: {new Date(store.created_at).toLocaleDateString('vi-VN')}
                     </span>
+                    {store.is_active && (
+                      <span className="flex items-center gap-1 font-bold text-gray-700">
+                        <Utensils className="w-3.5 h-3.5 text-[#FF5A1F]" />
+                        {productsCount} món
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* Action Buttons: Phê duyệt / Tạm khóa */}
+              {/* Action Buttons */}
               <div className="pt-3 border-t border-gray-100 flex items-center gap-2">
                 {!store.is_active ? (
-                  <button
-                    type="button"
-                    disabled={isLoading}
-                    onClick={() => handleToggleApproval(store, true)}
-                    className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>{isLoading ? 'Đang duyệt...' : '✅ Phê Duyệt Mở Quán'}</span>
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      disabled={isLoading}
+                      onClick={() => handleToggleApproval(store, true)}
+                      className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>{isLoading ? 'Đang duyệt...' : '✅ Phê Duyệt Mở Quán'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isLoading}
+                      onClick={() => handleRejectStore(store)}
+                      className="py-2.5 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50 shrink-0"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      <span>Từ Chối</span>
+                    </button>
+                  </>
                 ) : (
                   <>
                     <button
@@ -259,14 +330,14 @@ export const StoreApprovalTab: React.FC<StoreApprovalTabProps> = ({
                       <Lock className="w-3.5 h-3.5" />
                       <span>{isLoading ? 'Đang khóa...' : 'Tạm Khóa'}</span>
                     </button>
-                    <Link
-                      to={`/stores/${store.id}`}
-                      target="_blank"
-                      className="py-2 px-3 rounded-xl bg-orange-50 hover:bg-orange-100 text-[#FF5A1F] border border-orange-200 font-bold text-xs transition-colors flex items-center justify-center gap-1.5"
+                    <button
+                      type="button"
+                      onClick={() => setMenuModalStoreId(store.id)}
+                      className="py-2 px-3 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
                     >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Xem Quán</span>
-                    </Link>
+                      <ClipboardList className="w-3.5 h-3.5" />
+                      <span>📋 Quản lý thực đơn</span>
+                    </button>
                   </>
                 )}
               </div>
@@ -290,6 +361,15 @@ export const StoreApprovalTab: React.FC<StoreApprovalTabProps> = ({
         <QuickStoreModal
           onClose={() => setIsQuickModalOpen(false)}
           onSuccess={onRefreshData}
+        />
+      )}
+
+      {/* Modal Quản Lý Thực Đơn Dạng List Ngay Trong Admin */}
+      {menuModalStoreId && (
+        <AdminStoreMenuModal
+          storeId={menuModalStoreId}
+          onClose={() => setMenuModalStoreId(null)}
+          onMenuChanged={onRefreshData}
         />
       )}
     </div>

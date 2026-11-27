@@ -16,6 +16,12 @@ import AdminDashboardPage from './pages/admin/AdminDashboardPage';
 import { useAuthStore } from './store/useAuthStore';
 import type { UserRole } from './types';
 
+function getHomePathByRole(role?: UserRole): string {
+  if (role === 'ADMIN') return '/admin';
+  if (role === 'MERCHANT') return '/merchant';
+  return '/';
+}
+
 interface ProtectedRouteProps {
   allowedRoles?: UserRole[];
   children: React.ReactNode;
@@ -29,7 +35,18 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRoles, children 
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={getHomePathByRole(user.role)} replace />;
+  }
+
+  return <>{children}</>;
+};
+
+const CustomerPortalGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, user } = useAuthStore();
+
+  // Khách chưa đăng nhập hoặc role CUSTOMER được phép xem/đặt món
+  if (isAuthenticated && user && user.role !== 'CUSTOMER') {
+    return <Navigate to={getHomePathByRole(user.role)} replace />;
   }
 
   return <>{children}</>;
@@ -48,7 +65,7 @@ export const App: React.FC = () => {
         <Route
           path="/merchant"
           element={
-            <ProtectedRoute allowedRoles={['MERCHANT', 'ADMIN']}>
+            <ProtectedRoute allowedRoles={['MERCHANT']}>
               <MerchantLayout />
             </ProtectedRoute>
           }
@@ -69,13 +86,20 @@ export const App: React.FC = () => {
         </Route>
 
         {/* Main Customer Layout (Phân hệ Khách hàng Phase 2) */}
-        <Route path="/" element={<CustomerLayout />}>
+        <Route
+          path="/"
+          element={
+            <CustomerPortalGuard>
+              <CustomerLayout />
+            </CustomerPortalGuard>
+          }
+        >
           <Route index element={<HomePage />} />
           <Route path="stores/:id" element={<StoreDetailPage />} />
           <Route
             path="checkout"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={['CUSTOMER']}>
                 <CheckoutPage />
               </ProtectedRoute>
             }
@@ -83,7 +107,7 @@ export const App: React.FC = () => {
           <Route
             path="my-orders"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={['CUSTOMER']}>
                 <MyOrdersPage />
               </ProtectedRoute>
             }
@@ -91,7 +115,7 @@ export const App: React.FC = () => {
           <Route
             path="profile"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={['CUSTOMER']}>
                 <ProfilePage />
               </ProtectedRoute>
             }

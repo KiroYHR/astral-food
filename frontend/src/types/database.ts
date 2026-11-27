@@ -31,6 +31,12 @@ export interface User {
   phone: string;
   role: UserRole;
   created_at: string;
+  orders_count?: number;
+  stores_count?: number;
+  _count?: {
+    orders?: number;
+    stores?: number;
+  };
 }
 
 /**
@@ -48,8 +54,22 @@ export interface Store {
   created_at: string;
   // Các trường bổ sung đồng bộ trải nghiệm người dùng & lọc quán
   rating?: number;
+  review_count?: number;
   delivery_time?: string;
   category_tag?: string;
+  owner?: {
+    id: string;
+    full_name: string;
+    email?: string;
+    phone?: string;
+  };
+  products_count?: number;
+  orders_count?: number;
+  _count?: {
+    products?: number;
+    orders?: number;
+    reviews?: number;
+  };
 }
 
 /**
@@ -70,6 +90,7 @@ export interface Product {
   id: string;
   store_id: string;
   category_id: string;
+  category_name?: string;
   name: string;
   description: string;
   price: number;
@@ -77,6 +98,24 @@ export interface Product {
   is_available: boolean;
   created_at: string;
   tags?: string[];
+}
+
+export interface StoreReview {
+  id: string;
+  order_id: string;
+  store_id: string;
+  customer_id: string;
+  customer_name: string;
+  rating: number;
+  comment: string;
+  created_at: string;
+}
+
+export interface StoreReviewsResponse {
+  average_rating: number;
+  review_count: number;
+  distribution: Record<number, number>;
+  reviews: StoreReview[];
 }
 
 /**
@@ -100,6 +139,8 @@ export interface Order {
   voucher_code?: string;
   customer_name?: string;
   customer_phone?: string;
+  has_reviewed?: boolean;
+  review?: StoreReview | null;
 }
 
 /**
@@ -252,6 +293,12 @@ export interface PlatformActivityLog {
   title: string;
   description: string;
   timestamp: string;
+}
+
+export interface AdminUserDetail extends User {
+  stores: Store[];
+  total_spent: number;
+  ses_verification?: EmailVerificationInfo;
 }
 
 export interface PlatformOverview {
