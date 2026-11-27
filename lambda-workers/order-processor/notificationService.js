@@ -1,8 +1,13 @@
 const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
+const { shouldRunLocalSimulation } = require('./normalizeOrder');
 
-const region = process.env.AWS_REGION || 'ap-southeast-1';
-const sesClient = new SESClient({ region });
-const senderEmail = process.env.SENDER_EMAIL || 'no-reply@astralfood.vn';
+let cachedSESClient = null;
+function getSESClient(region) {
+  if (!cachedSESClient) {
+    cachedSESClient = new SESClient({ region });
+  }
+  return cachedSESClient;
+}
 
 const STATUS_META = {
   PENDING: {
@@ -59,62 +64,6 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-/**
- * Chuẩn hóa object đơn hàng từ mọi dạng payload (Backend TypeScript SQS payload hoặc test event)
- */
-function normalizeOrderData(raw) {
-  const data = raw.data || raw;
-  const items = (data.items || []).map((item) => {
-    const qty = Number(item.quantity) || 1;
-    const unitPrice = Number(item.unit_price !== undefined ? item.unit_price : item.unitPrice) || 0;
-    const subtotal =
-      item.subtotal !== undefined ? Number(item.subtotal) || 0 : unitPrice * qty;
-
-    return {
-      product_name:
-        item.product_name ||
-        item.productName ||
-        (item.product && item.product.name) ||
-        `Món ăn #${item.product_id || item.productId || 'N/A'}`,
-      quantity: qty,
-      unit_price: unitPrice,
-      subtotal,
-    };
-  });
-
-  return {
-    event_type: data.eventType || data.event_type || raw.eventType || 'ORDER_CREATED',
-    id: data.id || data.orderId,
-    status: String(data.status || 'PENDING').toUpperCase(),
-    customer_name:
-      data.customer_name ||
-      data.customerName ||
-      (data.customer && data.customer.fullName) ||
-      'Khách hàng AstralFood',
-    customer_email:
-      data.customer_email ||
-      data.customerEmail ||
-      (data.customer && data.customer.email) ||
-      'customer@example.com',
-    store_name:
-      data.store_name ||
-      data.storeName ||
-      (data.store && data.store.name) ||
-      'AstralFood Store',
-    store_id: data.store_id || data.storeId,
-    delivery_address: data.delivery_address || data.deliveryAddress || 'N/A',
-    note: data.note || '',
-    voucher_code: data.voucher_code || data.voucherCode || '',
-    invoice_s3_url: data.invoice_s3_url || data.invoiceS3Url || '',
-    created_at: data.created_at || data.createdAt || new Date().toISOString(),
-    total_amount:
-      Number(data.total_amount !== undefined ? data.total_amount : data.totalAmount) || 0,
-    discount_amount:
-      Number(data.discount_amount !== undefined ? data.discount_amount : data.discountAmount) || 0,
-    items,
-  };
-}
-
 function getStatusMeta(orderData) {
   if (orderData.event_type === 'ORDER_CREATED') {
     return STATUS_META.PENDING;
@@ -123,9 +72,7 @@ function getStatusMeta(orderData) {
 }
 
 /**
- * Tạo nội dung HTML Email thông báo đơn hàng cho AstralFood (hỗ trợ cả ORDER_CREATED & ORDER_STATUS_UPDATED)
- * @param {Object} orderData
- * @returns {string}
+ * Tạo nội dung HTML Email thông báo đơn hàng AstralFood (hỗ trợ cả ORDER_CREATED & ORDER_STATUS_UPDATED)
  */
 function createOrderConfirmationHTML(orderData) {
   const statusMeta = getStatusMeta(orderData);
@@ -159,14 +106,11 @@ function createOrderConfirmationHTML(orderData) {
     </head>
     <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #FFFDF9; margin: 0; padding: 24px; color: #333333;">
       <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #ffeedd; overflow: hidden; box-shadow: 0 4px 12px rgba(255, 90, 31, 0.08);">
-        
-        <!-- Header -->
         <div style="background: linear-gradient(135deg, #FF5A1F 0%, #F59E0B 100%); padding: 24px; text-align: center; color: #ffffff;">
           <h1 style="margin: 0; font-size: 26px; letter-spacing: 1px;">ASTRALFOOD</h1>
           <p style="margin: 6px 0 0 0; font-size: 13px; opacity: 0.95;">${escapeHtml(statusMeta.headline)}</p>
         </div>
 
-        <!-- Content -->
         <div style="padding: 24px;">
           <p style="font-size: 15px;">Xin chào <strong>${escapeHtml(orderData.customer_name)}</strong>,</p>
           <p style="font-size: 14px; color: #555555; line-height: 1.5;">
@@ -181,7 +125,6 @@ function createOrderConfirmationHTML(orderData) {
             ${orderData.note ? `<p style="margin: 4px 0;"><strong>Ghi chú:</strong> <em>${escapeHtml(orderData.note)}</em></p>` : ''}
           </div>
 
-          <!-- Chi tiết món ăn -->
           <table style="width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px;">
             <thead>
               <tr style="background-color: #fff3ec; color: #FF5A1F;">
@@ -196,7 +139,6 @@ function createOrderConfirmationHTML(orderData) {
             </tbody>
           </table>
 
-          <!-- Tổng kết thanh toán -->
           <div style="text-align: right; margin-top: 20px; font-size: 14px;">
             ${
               orderData.discount_amount > 0
@@ -221,85 +163,69 @@ function createOrderConfirmationHTML(orderData) {
   `;
 }
 
-function shouldRunLocalSimulation() {
-  if (process.env.LOCAL_SIMULATION === 'true') return true;
-  if (process.env.AWS_LAMBDA_FUNCTION_NAME) return false;
-  return !process.env.AWS_ACCESS_KEY_ID;
-}
-
 /**
- * AWS Lambda Handler (Trigger từ Amazon SQS - hỗ trợ ReportBatchItemFailures)
+ * Xử lý gửi Email thông báo đơn hàng qua Amazon SES
  */
-exports.handler = async (event) => {
-  console.log('Incoming Notification Lambda Event:', JSON.stringify(event));
+async function processNotification(orderData) {
+  const region = process.env.AWS_REGION || 'ap-southeast-1';
+  const senderEmail = process.env.SENDER_EMAIL || 'no-reply@astralfood.vn';
+  const statusMeta = getStatusMeta(orderData);
+  const recipientEmail = orderData.customer_email || 'customer@example.com';
+  const subject = `[AstralFood] ${statusMeta.subjectPrefix} #${orderData.id} - ${orderData.store_name}`;
+  const htmlBody = createOrderConfirmationHTML(orderData);
 
-  const records = Array.isArray(event?.Records)
-    ? event.Records
-    : [{ body: JSON.stringify(event || {}) }];
+  console.log(
+    `[SES] Chuẩn bị gửi email (${orderData.event_type}/${orderData.status}) cho đơn ${orderData.id} tới: ${recipientEmail}`
+  );
 
-  const batchItemFailures = [];
-
-  for (const record of records) {
-    try {
-      const parsedBody =
-        typeof record.body === 'string' ? JSON.parse(record.body) : record.body || record;
-      const orderData = normalizeOrderData(parsedBody);
-
-      if (!orderData.id) {
-        console.warn('[SES WORKER] Bỏ qua record không có Order ID:', record);
-        continue;
-      }
-
-      const statusMeta = getStatusMeta(orderData);
-      const recipientEmail = orderData.customer_email || 'customer@example.com';
-      console.log(
-        `[SES WORKER] Đang gửi email (${orderData.event_type}/${orderData.status}) cho đơn ${orderData.id} tới: ${recipientEmail}`
-      );
-
-      const htmlBody = createOrderConfirmationHTML(orderData);
-
-      if (shouldRunLocalSimulation()) {
-        console.log(
-          `[LOCAL / FALLBACK] Gửi email mô phỏng thành công tới ${recipientEmail} cho đơn hàng ${orderData.id} (${statusMeta.label})`
-        );
-      } else {
-        const sendEmailParams = {
-          Source: senderEmail,
-          Destination: {
-            ToAddresses: [recipientEmail],
-          },
-          Message: {
-            Subject: {
-              Data: `[AstralFood] ${statusMeta.subjectPrefix} #${orderData.id} - ${orderData.store_name}`,
-              Charset: 'UTF-8',
-            },
-            Body: {
-              Html: {
-                Data: htmlBody,
-                Charset: 'UTF-8',
-              },
-            },
-          },
-        };
-
-        const result = await sesClient.send(new SendEmailCommand(sendEmailParams));
-        console.log(`[SES SUCCESS] Message ID: ${result.MessageId}`);
-      }
-    } catch (err) {
-      console.error('[SES WORKER ERROR] Lỗi gửi email qua SES:', err);
-      if (record.messageId) {
-        batchItemFailures.push({ itemIdentifier: record.messageId });
-      }
-    }
+  if (shouldRunLocalSimulation()) {
+    console.log(
+      `[SES][LOCAL] Gửi email mô phỏng thành công tới ${recipientEmail} (${statusMeta.label})`
+    );
+    return {
+      skipped: false,
+      simulated: true,
+      recipientEmail,
+      subject,
+      statusLabel: statusMeta.label,
+    };
   }
 
-  return {
-    statusCode: 200,
-    body: 'Gửi thông báo hoàn tất',
-    batchItemFailures,
-  };
-};
+  const client = getSESClient(region);
+  const result = await client.send(
+    new SendEmailCommand({
+      Source: senderEmail,
+      Destination: {
+        ToAddresses: [recipientEmail],
+      },
+      Message: {
+        Subject: {
+          Data: subject,
+          Charset: 'UTF-8',
+        },
+        Body: {
+          Html: {
+            Data: htmlBody,
+            Charset: 'UTF-8',
+          },
+        },
+      },
+    })
+  );
 
-exports.createOrderConfirmationHTML = createOrderConfirmationHTML;
-exports.normalizeOrderData = normalizeOrderData;
-exports.escapeHtml = escapeHtml;
+  console.log(`[SES SUCCESS] Message ID: ${result.MessageId}`);
+  return {
+    skipped: false,
+    simulated: false,
+    recipientEmail,
+    subject,
+    messageId: result.MessageId,
+    statusLabel: statusMeta.label,
+  };
+}
+
+module.exports = {
+  processNotification,
+  createOrderConfirmationHTML,
+  escapeHtml,
+};

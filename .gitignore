@@ -19,6 +19,7 @@ frontend/.vite/
 backend/node_modules/
 backend/dist/
 lambda-workers/node_modules/
+lambda-workers/*.zip
 __pycache__/
 *.py[cod]
 venv/

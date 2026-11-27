@@ -1,10 +1,21 @@
 const PDFDocument = require('pdfkit');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { shouldRunLocalSimulation } = require('./normalizeOrder');
 
-const region = process.env.AWS_REGION || 'ap-southeast-1';
-const bucketName =
-  process.env.INVOICE_S3_BUCKET || process.env.S3_BUCKET_INVOICES || 'astralfood-invoices';
-const s3Client = new S3Client({ region });
+function getConfig() {
+  const region = process.env.AWS_REGION || 'ap-southeast-1';
+  const bucketName =
+    process.env.INVOICE_S3_BUCKET || process.env.S3_BUCKET_INVOICES || 'astralfood-invoices';
+  return { region, bucketName };
+}
+
+let cachedS3Client = null;
+function getS3Client(region) {
+  if (!cachedS3Client) {
+    cachedS3Client = new S3Client({ region });
+  }
+  return cachedS3Client;
+}
 
 /**
  * Chuyển chuỗi tiếng Việt có dấu sang ASCII sạch để font mặc định Helvetica của PDFKit không bị lỗi ký tự.
@@ -19,62 +30,7 @@ function toAsciiVietnamese(value) {
 }
 
 /**
- * Chuẩn hóa object đơn hàng từ mọi dạng payload (Backend TypeScript SQS payload hoặc test event)
- */
-function normalizeOrderData(raw) {
-  const data = raw.data || raw;
-  const items = (data.items || []).map((item) => {
-    const qty = Number(item.quantity) || 1;
-    const unitPrice = Number(item.unit_price !== undefined ? item.unit_price : item.unitPrice) || 0;
-    const subtotal =
-      item.subtotal !== undefined ? Number(item.subtotal) || 0 : unitPrice * qty;
-
-    return {
-      product_name:
-        item.product_name ||
-        item.productName ||
-        (item.product && item.product.name) ||
-        `Mon #${item.product_id || item.productId || 'N/A'}`,
-      quantity: qty,
-      unit_price: unitPrice,
-      subtotal,
-    };
-  });
-
-  return {
-    event_type: data.eventType || data.event_type || raw.eventType || 'ORDER_CREATED',
-    id: data.id || data.orderId,
-    status: data.status || 'PENDING',
-    customer_name:
-      data.customer_name ||
-      data.customerName ||
-      (data.customer && data.customer.fullName) ||
-      'Khach hang AstralFood',
-    customer_email:
-      data.customer_email ||
-      data.customerEmail ||
-      (data.customer && data.customer.email) ||
-      'customer@example.com',
-    store_name:
-      data.store_name ||
-      data.storeName ||
-      (data.store && data.store.name) ||
-      'AstralFood Store',
-    store_id: data.store_id || data.storeId,
-    delivery_address: data.delivery_address || data.deliveryAddress || 'N/A',
-    note: data.note || '',
-    voucher_code: data.voucher_code || data.voucherCode || '',
-    created_at: data.created_at || data.createdAt || new Date().toISOString(),
-    total_amount:
-      Number(data.total_amount !== undefined ? data.total_amount : data.totalAmount) || 0,
-    discount_amount:
-      Number(data.discount_amount !== undefined ? data.discount_amount : data.discountAmount) || 0,
-    items,
-  };
-}
-
-/**
- * Tạo file PDF hóa đơn AstralFood từ dữ liệu Order
+ * Tạo file PDF hóa đơn AstralFood từ dữ liệu Order đã chuẩn hóa
  * @param {Object} orderData
  * @returns {Promise<Buffer>}
  */
@@ -188,10 +144,15 @@ function generateInvoicePDFBuffer(orderData) {
         doc
           .fillColor('#10B981')
           .fontSize(10)
-          .text(`${voucherLabel}: -${orderData.discount_amount.toLocaleString('vi-VN')} VND`, 40, doc.y, {
-            width: 515,
-            align: 'right',
-          });
+          .text(
+            `${voucherLabel}: -${orderData.discount_amount.toLocaleString('vi-VN')} VND`,
+            40,
+            doc.y,
+            {
+              width: 515,
+              align: 'right',
+            }
+          );
       }
 
       doc
@@ -223,77 +184,61 @@ function generateInvoicePDFBuffer(orderData) {
   });
 }
 
-function shouldRunLocalSimulation() {
-  if (process.env.LOCAL_SIMULATION === 'true') return true;
-  if (process.env.AWS_LAMBDA_FUNCTION_NAME) return false;
-  return !process.env.AWS_ACCESS_KEY_ID;
-}
-
 /**
- * AWS Lambda Handler (Trigger từ Amazon SQS - hỗ trợ ReportBatchItemFailures)
+ * Xử lý tạo hóa đơn PDF và tải lên Amazon S3 (chỉ tạo khi ORDER_CREATED hoặc COMPLETED)
  */
-exports.handler = async (event) => {
-  console.log('Incoming Invoice Lambda Event:', JSON.stringify(event));
-
-  const records = Array.isArray(event?.Records)
-    ? event.Records
-    : [{ body: JSON.stringify(event || {}) }];
-
-  const batchItemFailures = [];
-
-  for (const record of records) {
-    try {
-      const parsedBody =
-        typeof record.body === 'string' ? JSON.parse(record.body) : record.body || record;
-      const orderData = normalizeOrderData(parsedBody);
-
-      if (!orderData.id) {
-        console.warn('[INVOICE WORKER] Bo qua record khong co Order ID:', record);
-        continue;
-      }
-
-      // Chỉ xuất hóa đơn khi tạo đơn mới hoặc khi đơn chuyển sang trạng thái COMPLETED
-      if (orderData.event_type === 'ORDER_STATUS_UPDATED' && orderData.status !== 'COMPLETED') {
-        console.log(
-          `[INVOICE WORKER] Bo qua tao PDF cho su kien ${orderData.event_type} (${orderData.status}) cua don ${orderData.id}`
-        );
-        continue;
-      }
-
-      console.log(`[INVOICE WORKER] Dang tao hoa don cho don hang: ${orderData.id}`);
-      const pdfBuffer = await generateInvoicePDFBuffer(orderData);
-      const s3Key = `invoices/INV-${orderData.id}.pdf`;
-
-      if (shouldRunLocalSimulation()) {
-        console.log(
-          `[LOCAL / FALLBACK] Da tao thanh cong PDF Buffer (${pdfBuffer.length} bytes). S3 Path: s3://${bucketName}/${s3Key}`
-        );
-      } else {
-        const uploadParams = {
-          Bucket: bucketName,
-          Key: s3Key,
-          Body: pdfBuffer,
-          ContentType: 'application/pdf',
-        };
-
-        await s3Client.send(new PutObjectCommand(uploadParams));
-        console.log(`[S3 SUCCESS] Da luu hoa don vao s3://${bucketName}/${s3Key}`);
-      }
-    } catch (recordErr) {
-      console.error('[INVOICE WORKER ERROR] Loi xu ly record:', recordErr);
-      if (record.messageId) {
-        batchItemFailures.push({ itemIdentifier: record.messageId });
-      }
-    }
+async function processInvoice(orderData) {
+  if (orderData.event_type === 'ORDER_STATUS_UPDATED' && orderData.status !== 'COMPLETED') {
+    console.log(
+      `[INVOICE] Bỏ qua tạo PDF cho sự kiện ${orderData.event_type} (${orderData.status}) của đơn ${orderData.id}`
+    );
+    return { skipped: true, reason: `Status ${orderData.status} does not require PDF regeneration` };
   }
 
-  return {
-    statusCode: 200,
-    body: 'Xử lý hóa đơn hoàn tất',
-    batchItemFailures,
-  };
-};
+  const { region, bucketName } = getConfig();
+  const s3Key = `invoices/INV-${orderData.id}.pdf`;
+  const invoiceUrl = `https://${bucketName}.s3.${region}.amazonaws.com/${s3Key}`;
 
-exports.generateInvoicePDFBuffer = generateInvoicePDFBuffer;
-exports.normalizeOrderData = normalizeOrderData;
-exports.toAsciiVietnamese = toAsciiVietnamese;
+  console.log(`[INVOICE] Đang tạo hóa đơn PDF cho đơn hàng: ${orderData.id}`);
+  const pdfBuffer = await generateInvoicePDFBuffer(orderData);
+
+  if (shouldRunLocalSimulation()) {
+    console.log(
+      `[INVOICE][LOCAL] Tạo thành công PDF (${pdfBuffer.length} bytes) -> s3://${bucketName}/${s3Key}`
+    );
+    return {
+      skipped: false,
+      simulated: true,
+      bucketName,
+      s3Key,
+      invoiceUrl,
+      pdfBytes: pdfBuffer.length,
+    };
+  }
+
+  const client = getS3Client(region);
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucketName,
+      Key: s3Key,
+      Body: pdfBuffer,
+      ContentType: 'application/pdf',
+    })
+  );
+
+  console.log(`[INVOICE][S3 SUCCESS] Đã lưu hóa đơn tại s3://${bucketName}/${s3Key}`);
+  return {
+    skipped: false,
+    simulated: false,
+    bucketName,
+    s3Key,
+    invoiceUrl,
+    pdfBytes: pdfBuffer.length,
+  };
+}
+
+module.exports = {
+  processInvoice,
+  generateInvoicePDFBuffer,
+  toAsciiVietnamese,
+};
