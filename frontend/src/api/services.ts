@@ -135,7 +135,7 @@ export const authService = {
     return res;
   },
 
-  async getEmailVerificationStatus(): Promise<EmailVerificationInfo> {
+  async getEmailVerificationStatus(notifyWelcome = false): Promise<EmailVerificationInfo> {
     if (USE_MOCK) {
       await mockDelay(100);
       return {
@@ -146,7 +146,9 @@ export const authService = {
         message: 'Chế độ Mock cục bộ.',
       };
     }
-    const res: any = await apiClient.get('/auth/email-verification-status');
+    const res: any = await apiClient.get('/auth/email-verification-status', {
+      params: notifyWelcome ? { notifyWelcome: 'true' } : undefined,
+    });
     return res;
   },
 

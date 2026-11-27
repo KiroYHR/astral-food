@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Mail, RefreshCw, CheckCircle2, X } from 'lucide-react';
 import { authService } from '../api/services';
 import { useAuthStore } from '../store/useAuthStore';
@@ -13,6 +13,19 @@ export const SesVerificationBanner: React.FC = () => {
   const [dismissed, setDismissed] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const [isResending, setIsResending] = useState(false);
+  const notifiedVerifiedRef = useRef(false);
+
+  const showVerifiedSuccessToast = useCallback((res: EmailVerificationInfo) => {
+    if (notifiedVerifiedRef.current) return;
+    notifiedVerifiedRef.current = true;
+    const hasWelcome = res.welcome_email_sent || res.welcomeEmailSent;
+    toast.success(
+      hasWelcome
+        ? 'Email đã xác thực thành công! Đã gửi email chào mừng vào Gmail của bạn.'
+        : 'Email đã xác thực thành công! Bạn đã có thể nhận hóa đơn qua Gmail.',
+      { icon: '✅', duration: 4000 }
+    );
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -21,6 +34,7 @@ export const SesVerificationBanner: React.FC = () => {
       return;
     }
 
+    notifiedVerifiedRef.current = false;
     setDismissed(false);
     authService
       .getEmailVerificationStatus()
@@ -36,6 +50,37 @@ export const SesVerificationBanner: React.FC = () => {
     };
   }, [isAuthenticated, user?.id]);
 
+  const shouldAutoCheck = Boolean(
+    !USE_MOCK && isAuthenticated && user && !dismissed && info && !info.verified
+  );
+
+  useEffect(() => {
+    if (!shouldAutoCheck) return;
+
+    const onReturnToTab = () => {
+      if (document.visibilityState !== 'visible') return;
+      authService
+        .getEmailVerificationStatus(true)
+        .then((res) => {
+          setInfo(res);
+          if (res.verified) {
+            showVerifiedSuccessToast(res);
+          }
+        })
+        .catch(() => {
+          // Bỏ qua âm thầm khi kiểm tra lúc quay lại tab
+        });
+    };
+
+    window.addEventListener('focus', onReturnToTab);
+    document.addEventListener('visibilitychange', onReturnToTab);
+
+    return () => {
+      window.removeEventListener('focus', onReturnToTab);
+      document.removeEventListener('visibilitychange', onReturnToTab);
+    };
+  }, [shouldAutoCheck, showVerifiedSuccessToast]);
+
   if (USE_MOCK || !isAuthenticated || !user || dismissed || !info || info.verified) {
     return null;
   }
@@ -46,7 +91,7 @@ export const SesVerificationBanner: React.FC = () => {
       const res = await authService.resendVerificationEmail();
       setInfo(res);
       if (res.verified) {
-        toast.success('Email đã được xác thực sẵn trên AWS SES!', { icon: '✅' });
+        showVerifiedSuccessToast(res);
       } else if (res.sent) {
         toast.success('Đã gửi lại email xác thực AWS SES! Hãy kiểm tra Gmail (cả mục Spam).');
       } else {
@@ -62,12 +107,10 @@ export const SesVerificationBanner: React.FC = () => {
   const handleCheck = async () => {
     setIsChecking(true);
     try {
-      const res = await authService.getEmailVerificationStatus();
+      const res = await authService.getEmailVerificationStatus(true);
       setInfo(res);
       if (res.verified) {
-        toast.success('Email đã xác thực thành công! Bạn đã có thể nhận hóa đơn qua Gmail.', {
-          icon: '✅',
-        });
+        showVerifiedSuccessToast(res);
       } else {
         toast('Chưa thấy xác nhận. Hãy mở mail từ Amazon Web Services và bấm link xác nhận nhé!', {
           icon: '📩',
