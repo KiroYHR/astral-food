@@ -1,5 +1,5 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import {
   Flame,
   TrendingUp,
@@ -9,16 +9,20 @@ import {
   ExternalLink,
   ChefHat,
   Home,
+  LogOut,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { Store as StoreType, User, Order, PlatformOverview } from '../../types';
 import { adminService } from '../../api/services';
+import { useAuthStore } from '../../store/useAuthStore';
 import PlatformOverviewTab from './components/PlatformOverviewTab';
 import StoreApprovalTab from './components/StoreApprovalTab';
 import UserManagementTab from './components/UserManagementTab';
 import GlobalOrdersTab from './components/GlobalOrdersTab';
 
 export const AdminDashboardPage: React.FC = () => {
+  const { logout } = useAuthStore();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const currentTab = searchParams.get('tab') || 'overview';
 
@@ -151,6 +155,22 @@ export const AdminDashboardPage: React.FC = () => {
                 <span className="hidden md:inline">Trang Khách Hàng</span>
                 <ExternalLink className="w-3 h-3 text-gray-400" />
               </Link>
+
+              {/* Đăng xuất */}
+              <button
+                type="button"
+                id="btn-admin-logout"
+                onClick={() => {
+                  logout();
+                  toast.success('Đã đăng xuất tài khoản');
+                  navigate('/login', { replace: true });
+                }}
+                className="px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Đăng xuất tài khoản"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Đăng xuất</span>
+              </button>
             </div>
           </div>
 

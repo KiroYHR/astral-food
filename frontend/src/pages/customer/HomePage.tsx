@@ -1,5 +1,5 @@
-﻿import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Star,
   Clock,
@@ -17,11 +17,12 @@ import { FoodDetailModal } from '../../components/FoodDetailModal';
 
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const searchQuery = searchParams.get('q') || '';
 
   const [stores, setStores] = useState<Store[]>([]);
   const [allProducts, setAllProducts] = useState<{ product: Product; store: Store }[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('Tất cả');
-  const [searchQuery, setSearchQuery] = useState<string>('');
   const [priceFilter, setPriceFilter] = useState<string>('all');
   const [minRating, setMinRating] = useState<number>(0);
   const [sortBy, setSortBy] = useState<'popular' | 'rating' | 'price-asc'>('popular');
@@ -39,15 +40,18 @@ export const HomePage: React.FC = () => {
       const storeList = await storeService.getStores();
       setStores(storeList);
 
-      // Thu thập các món ăn nổi bật từ các cửa hàng
-      const prodsWithStore: { product: Product; store: Store }[] = [];
-      for (const store of storeList.slice(0, 4)) {
-        const prods = await productService.getProductsByStore(store.id);
-        prods.slice(0, 2).forEach((p) => {
-          prodsWithStore.push({ product: p, store });
-        });
-      }
-      setAllProducts(prodsWithStore);
+      // Thu thập các món ăn nổi bật song song từ tất cả cửa hàng
+      const storeProductsList = await Promise.all(
+        storeList.map(async (store) => {
+          try {
+            const prods = await productService.getProductsByStore(store.id);
+            return prods.slice(0, 2).map((p) => ({ product: p, store }));
+          } catch {
+            return [];
+          }
+        })
+      );
+      setAllProducts(storeProductsList.flat());
     } catch (err) {
       console.error('Error loading home data:', err);
     }
@@ -81,13 +85,24 @@ export const HomePage: React.FC = () => {
       return 0;
     });
 
-  // Lọc món ăn nổi bật
-  const filteredProducts = allProducts.filter(({ product }) => {
-    if (priceFilter === 'under35') return product.price < 35000;
-    if (priceFilter === '35to60') return product.price >= 35000 && product.price <= 60000;
-    if (priceFilter === 'above60') return product.price > 60000;
-    return true;
-  });
+  // Lọc và sắp xếp món ăn nổi bật
+  const filteredProducts = allProducts
+    .filter(({ product, store }) => {
+      const q = searchQuery.trim().toLowerCase();
+      const matchSearch =
+        !q ||
+        product.name.toLowerCase().includes(q) ||
+        store.name.toLowerCase().includes(q);
+      if (!matchSearch) return false;
+      if (priceFilter === 'under35') return product.price < 35000;
+      if (priceFilter === '35to60') return product.price >= 35000 && product.price <= 60000;
+      if (priceFilter === 'above60') return product.price > 60000;
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'price-asc') return a.product.price - b.product.price;
+      return 0;
+    });
 
   return (
     <div className="space-y-12 pb-16">
@@ -231,6 +246,7 @@ export const HomePage: React.FC = () => {
             >
               <option value="popular">Phổ biến nhất</option>
               <option value="rating">Đánh giá cao nhất</option>
+              <option value="price-asc">Giá món: Thấp đến cao</option>
             </select>
           </div>
         </div>
@@ -262,7 +278,8 @@ export const HomePage: React.FC = () => {
               type="button"
               onClick={() => {
                 setSelectedCategory('Tất cả');
-                setSearchQuery('');
+                setSearchParams({}, { replace: true });
+                setPriceFilter('all');
                 setMinRating(0);
               }}
               className="px-4 py-2 rounded-xl bg-orange-500 text-white text-xs font-bold hover:bg-orange-600 transition-colors cursor-pointer"

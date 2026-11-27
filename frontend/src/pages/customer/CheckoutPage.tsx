@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   MapPin,
@@ -17,20 +17,27 @@ import toast from 'react-hot-toast';
 
 export const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
-  const { items, storeId, storeName, voucherCode, discountAmount, applyVoucher, removeVoucher, clearCart, getSubtotal, getTotal } = useCartStore();
+  const { items, storeId, storeName, voucherCode, discountAmount, applyVoucher, removeVoucher, clearCart, getSubtotal } = useCartStore();
   const { user } = useAuthStore();
 
-  const [address, setAddress] = useState('268 Lý Thường Kiệt, Phường 14, Quận 10, TP.HCM');
-  const [recipientName, setRecipientName] = useState(user?.full_name || 'Nguyễn Văn Khách');
-  const [recipientPhone, setRecipientPhone] = useState(user?.phone || '0901234567');
+  const [address, setAddress] = useState(() => {
+    try {
+      return localStorage.getItem('astral_default_address') || '268 Lý Thường Kiệt, Phường 14, Quận 10, TP.HCM';
+    } catch {
+      return '268 Lý Thường Kiệt, Phường 14, Quận 10, TP.HCM';
+    }
+  });
+  const [recipientName, setRecipientName] = useState(user?.full_name || '');
+  const [recipientPhone, setRecipientPhone] = useState(user?.phone || '');
   const [note, setNote] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'COD' | 'MOMO' | 'VNPAY' | 'BANK'>('COD');
   const [voucherInput, setVoucherInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const subtotal = getSubtotal();
+  const foodDiscount = voucherCode === 'FREESHIP' ? 0 : discountAmount;
   const shippingFee = voucherCode === 'FREESHIP' ? 0 : 15000;
-  const total = Math.max(0, getTotal() + (voucherCode === 'FREESHIP' ? 0 : shippingFee));
+  const total = Math.max(0, subtotal - foodDiscount + shippingFee);
 
   if (items.length === 0) {
     return (
@@ -89,7 +96,7 @@ export const CheckoutPage: React.FC = () => {
       });
       navigate('/my-orders');
     } catch (err: any) {
-      toast.error(err.message || 'Lỗi khi tạo đơn hàng.');
+      toast.error(err?.response?.data?.error || err?.message || 'Lỗi khi tạo đơn hàng.');
     } finally {
       setIsSubmitting(false);
     }
@@ -346,10 +353,10 @@ export const CheckoutPage: React.FC = () => {
                 </span>
               </div>
 
-              {discountAmount > 0 && (
+              {foodDiscount > 0 && (
                 <div className="flex justify-between text-emerald-600 font-bold">
-                  <span>Giảm giá voucher:</span>
-                  <span>-{discountAmount.toLocaleString('vi-VN')} đ</span>
+                  <span>Giảm giá voucher ({voucherCode}):</span>
+                  <span>-{foodDiscount.toLocaleString('vi-VN')} đ</span>
                 </div>
               )}
 

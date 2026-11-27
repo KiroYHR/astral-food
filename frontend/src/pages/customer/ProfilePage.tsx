@@ -1,19 +1,28 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, Mail, Phone, MapPin, Shield, Save } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import toast from 'react-hot-toast';
+
+const DEFAULT_ADDRESS_KEY = 'astral_default_address';
+const DEFAULT_ADDRESS_FALLBACK = '268 Lý Thường Kiệt, Phường 14, Quận 10, TP.HCM';
 
 export const ProfilePage: React.FC = () => {
   const { user, initAuth } = useAuthStore();
 
   const [fullName, setFullName] = useState(user?.full_name || '');
   const [phone, setPhone] = useState(user?.phone || '');
-  const [defaultAddress, setDefaultAddress] = useState('268 Lý Thường Kiệt, Phường 14, Quận 10, TP.HCM');
+  const [defaultAddress, setDefaultAddress] = useState(() => {
+    try {
+      return localStorage.getItem(DEFAULT_ADDRESS_KEY) || DEFAULT_ADDRESS_FALLBACK;
+    } catch {
+      return DEFAULT_ADDRESS_FALLBACK;
+    }
+  });
 
   useEffect(() => {
     if (user) {
       setFullName(user.full_name);
-      setPhone(user.phone);
+      setPhone(user.phone || '');
     }
   }, [user]);
 
@@ -21,15 +30,18 @@ export const ProfilePage: React.FC = () => {
     e.preventDefault();
     if (!user) return;
 
+    const cleanedAddress = defaultAddress.trim() || DEFAULT_ADDRESS_FALLBACK;
     const updatedUser = {
       ...user,
-      full_name: fullName,
-      phone: phone,
+      full_name: fullName.trim() || user.full_name,
+      phone: phone.trim(),
     };
 
     localStorage.setItem('astral_user', JSON.stringify(updatedUser));
+    localStorage.setItem(DEFAULT_ADDRESS_KEY, cleanedAddress);
+    setDefaultAddress(cleanedAddress);
     initAuth();
-    toast.success('Đã cập nhật thông tin tài khoản thành công!', { icon: '✅' });
+    toast.success('Đã cập nhật thông tin tài khoản & địa chỉ mặc định!', { icon: '✅' });
   };
 
   return (
