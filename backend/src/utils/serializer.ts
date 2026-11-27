@@ -44,7 +44,10 @@ export function serializeProduct(prod: any) {
 }
 
 function inferCategoryTag(store: any): string {
-  if (store.category_tag) return store.category_tag;
+  const explicitTag = store.categoryTag || store.category_tag;
+  if (typeof explicitTag === 'string' && explicitTag.trim().length > 0) {
+    return explicitTag.trim();
+  }
   const text = `${store.name || ''} ${store.description || ''}`.toLowerCase();
   const tags: string[] = [];
   if (text.includes('cơm tấm') || text.includes('com tam')) tags.push('Cơm tấm');
@@ -53,7 +56,7 @@ function inferCategoryTag(store: any): string {
   if (text.includes('phở') || text.includes('bún bò') || text.includes('hủ tiếu')) tags.push('Phở & Bún');
   if (text.includes('bún đậu') || text.includes('cuốn') || text.includes('gỏi cuốn')) tags.push('Món cuốn, Bún đậu & Cuốn');
   if (text.includes('bakery') || text.includes('bánh') || text.includes('ăn vặt') || text.includes('tráng miệng')) tags.push('Ăn vặt');
-  return tags.length > 0 ? tags.join(', ') : 'Trà sữa & Cafe, Ăn vặt';
+  return tags.length > 0 ? tags.join(', ') : 'Ẩm thực Việt';
 }
 
 export function serializeStore(store: any) {
@@ -62,6 +65,7 @@ export function serializeStore(store: any) {
     store.logoS3Url ||
     store.logo_s3_url ||
     'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=500&q=80';
+  const resolvedCategoryTag = inferCategoryTag(store);
 
   return {
     id: store.id,
@@ -74,11 +78,30 @@ export function serializeStore(store: any) {
     logoS3Url: logoUrl,
     rating: Number(store.rating) || 4.9,
     delivery_time: store.delivery_time || '20-30 phút',
-    category_tag: inferCategoryTag(store),
+    category_tag: resolvedCategoryTag,
+    categoryTag: resolvedCategoryTag,
     is_active: store.isActive !== undefined ? store.isActive : (store.is_active !== undefined ? store.is_active : true),
     isActive: store.isActive !== undefined ? store.isActive : (store.is_active !== undefined ? store.is_active : true),
     created_at: store.createdAt || store.created_at || new Date().toISOString(),
     createdAt: store.createdAt || store.created_at || new Date().toISOString(),
+    ...(store.owner
+      ? {
+          owner: {
+            id: store.owner.id,
+            full_name: store.owner.fullName || store.owner.full_name,
+            fullName: store.owner.fullName || store.owner.full_name,
+            email: store.owner.email,
+            phone: store.owner.phone,
+          },
+        }
+      : {}),
+    ...(store._count
+      ? {
+          _count: store._count,
+          products_count: store._count.products ?? 0,
+          orders_count: store._count.orders ?? 0,
+        }
+      : {}),
     categories: Array.isArray(store.categories) ? store.categories.map(serializeCategory) : undefined,
     products: Array.isArray(store.products) ? store.products.map(serializeProduct) : undefined,
   };
@@ -95,6 +118,13 @@ export function serializeUser(user: any) {
     role: user.role,
     created_at: user.createdAt || user.created_at || new Date().toISOString(),
     createdAt: user.createdAt || user.created_at || new Date().toISOString(),
+    ...(user._count
+      ? {
+          _count: user._count,
+          orders_count: user._count.orders ?? 0,
+          stores_count: user._count.stores ?? 0,
+        }
+      : {}),
   };
 }
 

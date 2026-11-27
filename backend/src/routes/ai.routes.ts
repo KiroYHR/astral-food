@@ -18,7 +18,9 @@ aiRouter.post('/generate-description', async (req: Request, res: Response) => {
       generated_description: result.description,
       suggestedTags: result.suggestedTags,
       suggested_tags: result.suggestedTags,
-      suggested_price_range: { min: 35000, max: 75000 },
+      suggestedPriceRange: result.suggestedPriceRange,
+      suggested_price_range: result.suggestedPriceRange,
+      aiProvider: result.source,
     });
   } catch (error) {
     console.error('[AI COPILOT ERROR]', error);

@@ -66,6 +66,7 @@ interface SeedStoreInput {
   ownerPhone: string;
   name: string;
   description: string;
+  categoryTag: string;
   address: string;
   rating: number;
   logoSourceUrl: string;
@@ -89,6 +90,7 @@ const REAL_STORES: SeedStoreInput[] = [
     ownerPhone: '0912345678',
     name: 'Cơm Tấm Phúc Lộc Thọ – Tô Hiến Thành',
     description: 'Hệ thống cơm tấm sườn nướng than hoa chuẩn vị Sài Gòn, nước mắm kẹo gia truyền.',
+    categoryTag: 'Cơm tấm',
     address: '236 Tô Hiến Thành, Phường 15, Quận 10, TP. Hồ Chí Minh',
     rating: 4.9,
     logoSourceUrl: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=800&q=80',
@@ -140,6 +142,7 @@ const REAL_STORES: SeedStoreInput[] = [
     ownerPhone: '0912345672',
     name: 'Phúc Long Coffee & Tea – Vạn Hạnh Mall',
     description: 'Trà sữa đậm vị trà Thái Nguyên & Lâm Đồng, cà phê rang xay truyền thống.',
+    categoryTag: 'Trà sữa & Cafe',
     address: '11 Sư Vạn Hạnh, Phường 12, Quận 10, TP. Hồ Chí Minh',
     rating: 4.8,
     logoSourceUrl: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=800&q=80',
@@ -191,6 +194,7 @@ const REAL_STORES: SeedStoreInput[] = [
     ownerPhone: '0912345673',
     name: 'Phở Hòa Pasteur',
     description: 'Thương hiệu phở bò gia truyền nổi tiếng từ năm 1968 tại TP.HCM, nước dùng hầm xương 12 giờ.',
+    categoryTag: 'Phở & Bún',
     address: '260C Pasteur, Phường Võ Thị Sáu, Quận 3, TP. Hồ Chí Minh',
     rating: 4.9,
     logoSourceUrl: 'https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?w=800&q=80',
@@ -237,6 +241,7 @@ const REAL_STORES: SeedStoreInput[] = [
     ownerPhone: '0912345674',
     name: 'Gà Rán Popeyes – Cách Mạng Tháng 8',
     description: 'Gà rán giòn cay kiểu Louisiana tẩm ướp 12 giờ, burger giòn rụm và khoai tây sốt Cajun.',
+    categoryTag: 'Gà rán & Burger',
     address: '588 Cách Mạng Tháng 8, Phường 11, Quận 3, TP. Hồ Chí Minh',
     rating: 4.7,
     logoSourceUrl: 'https://images.unsplash.com/photo-1626645738196-c2a7c87a8f58?w=800&q=80',
@@ -283,6 +288,7 @@ const REAL_STORES: SeedStoreInput[] = [
     ownerPhone: '0912345675',
     name: 'Bún Đậu Mắm Tôm Cô Khàn',
     description: 'Mẹt bún đậu mắm tôm chuẩn vị Hà Nội giữa lòng Sài Gòn: đậu rán giòn, chả cốm, nem chua rán.',
+    categoryTag: 'Bún đậu & Cuốn',
     address: '102/26 Cống Quỳnh, Phường Phạm Ngũ Lão, Quận 1, TP. Hồ Chí Minh',
     rating: 4.8,
     logoSourceUrl: 'https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=800&q=80',
@@ -329,6 +335,7 @@ const REAL_STORES: SeedStoreInput[] = [
     ownerPhone: '0912345676',
     name: 'Astral Gourmet Cafe & Bakery',
     description: 'Thương hiệu cà phê đặc sản, bánh nướng thủ công và đồ ăn vặt phong cách Cloud-Kitchen hiện đại.',
+    categoryTag: 'Trà sữa & Cafe, Ăn vặt',
     address: '268 Lý Thường Kiệt, Phường 14, Quận 10, TP. Hồ Chí Minh',
     rating: 4.9,
     logoSourceUrl: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=800&q=80',
@@ -454,6 +461,7 @@ async function main() {
           ownerId: storeOwner.id,
           name: s.name,
           description: s.description,
+          categoryTag: s.categoryTag,
           address: s.address,
           logoS3Url,
           rating: s.rating,
@@ -466,6 +474,7 @@ async function main() {
         data: {
           ownerId: storeOwner.id,
           description: s.description,
+          categoryTag: s.categoryTag,
           address: s.address,
           logoS3Url,
           rating: s.rating,

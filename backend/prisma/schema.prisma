@@ -42,6 +42,7 @@ model Store {
   ownerId     String      @map("owner_id")
   name        String
   description String?
+  categoryTag String?     @map("category_tag")
   address     String
   logoS3Url   String?     @map("logo_s3_url")
   rating      Decimal     @default(4.8) @db.Decimal(3, 2)

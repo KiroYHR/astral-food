@@ -132,6 +132,8 @@ storesRouter.post('/', requireRole('MERCHANT', 'ADMIN'), async (req: AuthRequest
       owner_id,
       name,
       description,
+      categoryTag,
+      category_tag,
       address,
       logoS3Url,
       logo_s3_url,
@@ -167,11 +169,16 @@ storesRouter.post('/', requireRole('MERCHANT', 'ADMIN'), async (req: AuthRequest
             : false
         : false;
 
+    const resolvedCategoryTag = categoryTag ?? category_tag;
     const store = await prisma.store.create({
       data: {
         ownerId: targetOwnerId,
         name: String(name).trim(),
         description: description ? String(description).trim() : '',
+        categoryTag:
+          resolvedCategoryTag && String(resolvedCategoryTag).trim()
+            ? String(resolvedCategoryTag).trim()
+            : null,
         address: String(address).trim(),
         logoS3Url:
           logoS3Url ||
@@ -205,13 +212,24 @@ storesRouter.put('/:id', requireRole('MERCHANT', 'ADMIN'), async (req: AuthReque
     const ownedStore = await assertStoreOwnership(id, req, res);
     if (!ownedStore) return;
 
-    const { name, description, address, logoS3Url, logo_s3_url, isActive, is_active } = req.body;
+    const {
+      name,
+      description,
+      categoryTag,
+      category_tag,
+      address,
+      logoS3Url,
+      logo_s3_url,
+      isActive,
+      is_active,
+    } = req.body;
     const requestedActive =
       isActive !== undefined
         ? Boolean(isActive)
         : is_active !== undefined
           ? Boolean(is_active)
           : undefined;
+    const nextCategoryTag = categoryTag !== undefined ? categoryTag : category_tag;
 
     if (req.user?.role !== 'ADMIN' && !ownedStore.isActive && requestedActive === true) {
       return res.status(403).json({
@@ -225,6 +243,12 @@ storesRouter.put('/:id', requireRole('MERCHANT', 'ADMIN'), async (req: AuthReque
       data: {
         ...(name && { name }),
         ...(description !== undefined && { description }),
+        ...(nextCategoryTag !== undefined && {
+          categoryTag:
+            nextCategoryTag && String(nextCategoryTag).trim()
+              ? String(nextCategoryTag).trim()
+              : null,
+        }),
         ...(address && { address }),
         ...((logoS3Url || logo_s3_url) && { logoS3Url: logoS3Url || logo_s3_url }),
         ...(requestedActive !== undefined && { isActive: requestedActive }),
