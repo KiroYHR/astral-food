@@ -67,6 +67,17 @@ export const HomePage: React.FC = () => {
     { id: 'Món cuốn', name: 'Bún đậu & Cuốn', icon: '🥢' },
   ];
 
+  const normalizeVietnamese = (str: string) =>
+    str
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D')
+      .toLowerCase()
+      .trim();
+
+  const normalizedQuery = normalizeVietnamese(searchQuery);
+
   // Lọc quán ăn theo danh mục, tìm kiếm và đánh giá
   const filteredStores = stores
     .filter((s) => {
@@ -77,9 +88,10 @@ export const HomePage: React.FC = () => {
           ? catTag.includes('cuốn')
           : catTag.includes(selectedCategory.toLowerCase()));
       const matchSearch =
-        !searchQuery ||
-        s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.description.toLowerCase().includes(searchQuery.toLowerCase());
+        !normalizedQuery ||
+        normalizeVietnamese(s.name).includes(normalizedQuery) ||
+        normalizeVietnamese(s.description).includes(normalizedQuery) ||
+        normalizeVietnamese(s.category_tag || '').includes(normalizedQuery);
       const matchRating = !minRating || (s.rating || 0) >= minRating;
       return matchCat && matchSearch && matchRating;
     })
@@ -91,11 +103,10 @@ export const HomePage: React.FC = () => {
   // Lọc và sắp xếp món ăn nổi bật
   const filteredProducts = allProducts
     .filter(({ product, store }) => {
-      const q = searchQuery.trim().toLowerCase();
       const matchSearch =
-        !q ||
-        product.name.toLowerCase().includes(q) ||
-        store.name.toLowerCase().includes(q);
+        !normalizedQuery ||
+        normalizeVietnamese(product.name).includes(normalizedQuery) ||
+        normalizeVietnamese(store.name).includes(normalizedQuery);
       if (!matchSearch) return false;
       if (priceFilter === 'under35') return product.price < 35000;
       if (priceFilter === '35to60') return product.price >= 35000 && product.price <= 60000;

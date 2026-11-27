@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import {
   ShoppingBag,
@@ -9,6 +9,7 @@ import {
   FileText,
   LogOut,
   ChevronDown,
+  X,
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useCartStore } from '../store/useCartStore';
@@ -39,19 +40,46 @@ export const Navbar: React.FC<NavbarProps> = ({ onSearch, searchQuery }) => {
   });
   const [isEditingAddress, setIsEditingAddress] = useState(false);
 
-  const currentSearch = searchQuery !== undefined ? searchQuery : searchParams.get('q') || '';
+  const externalQuery = searchQuery !== undefined ? searchQuery : searchParams.get('q') || '';
+  const [inputValue, setInputValue] = useState(externalQuery);
+  const [isComposing, setIsComposing] = useState(false);
+  const isComposingRef = useRef(false);
+  const lastCommittedQueryRef = useRef(externalQuery);
 
-  const handleSearchChange = (value: string) => {
-    if (onSearch) {
-      onSearch(value);
+  // Sync external URL / prop resets (e.g. "Khôi phục bộ lọc") without interrupting IME typing
+  useEffect(() => {
+    if (!isComposingRef.current && externalQuery !== lastCommittedQueryRef.current) {
+      lastCommittedQueryRef.current = externalQuery;
+      setInputValue(externalQuery);
+    }
+  }, [externalQuery]);
+
+  const commitSearch = useCallback(
+    (value: string) => {
+      lastCommittedQueryRef.current = value;
+      if (onSearch) {
+        onSearch(value);
+        return;
+      }
+      if (location.pathname === '/') {
+        setSearchParams(value ? { q: value } : {}, { replace: true });
+      } else if (value.trim()) {
+        navigate(`/?q=${encodeURIComponent(value)}`);
+      }
+    },
+    [onSearch, location.pathname, setSearchParams, navigate]
+  );
+
+  // Debounce router/URL updates so Vietnamese Telex/VNI IME composition is never interrupted
+  useEffect(() => {
+    if (isComposing || inputValue === lastCommittedQueryRef.current) {
       return;
     }
-    if (location.pathname === '/') {
-      setSearchParams(value ? { q: value } : {}, { replace: true });
-    } else {
-      navigate(value ? `/?q=${encodeURIComponent(value)}` : '/');
-    }
-  };
+    const timer = window.setTimeout(() => {
+      commitSearch(inputValue);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [inputValue, isComposing, commitSearch]);
 
   const commitAddress = (next: string) => {
     const cleaned = next.trim() || DEFAULT_ADDRESS_FALLBACK;
@@ -102,7 +130,11 @@ export const Navbar: React.FC<NavbarProps> = ({ onSearch, searchQuery }) => {
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
                   onBlur={() => commitAddress(address)}
-                  onKeyDown={(e) => e.key === 'Enter' && commitAddress(address)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                      commitAddress(address);
+                    }
+                  }}
                   autoFocus
                   className="w-56 text-xs font-bold text-gray-900 border-b border-orange-500 focus:outline-none"
                 />
@@ -127,10 +159,38 @@ export const Navbar: React.FC<NavbarProps> = ({ onSearch, searchQuery }) => {
             <input
               type="text"
               placeholder="Bạn muốn ăn gì hôm nay? (Cơm tấm, trà sữa, phở bò...)"
-              value={currentSearch}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              className="w-full pl-11 pr-4 py-2.5 text-sm bg-[#FFFDF9] border border-gray-200 rounded-full focus:outline-none focus:border-[#FF5A1F] focus:ring-2 focus:ring-orange-500/10 transition-all placeholder:text-gray-400"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onCompositionStart={() => {
+                isComposingRef.current = true;
+                setIsComposing(true);
+              }}
+              onCompositionEnd={(e) => {
+                isComposingRef.current = false;
+                setIsComposing(false);
+                setInputValue(e.currentTarget.value);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  commitSearch(inputValue);
+                }
+              }}
+              className="w-full pl-11 pr-10 py-2.5 text-sm bg-[#FFFDF9] border border-gray-200 rounded-full focus:outline-none focus:border-[#FF5A1F] focus:ring-2 focus:ring-orange-500/10 transition-all placeholder:text-gray-400"
             />
+            {inputValue && (
+              <button
+                type="button"
+                onClick={() => {
+                  setInputValue('');
+                  commitSearch('');
+                }}
+                className="p-1 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer transition-colors"
+                aria-label="Xóa từ khóa tìm kiếm"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
 

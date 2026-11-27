@@ -3,7 +3,6 @@ import {
   Store,
   CheckCircle2,
   Lock,
-  Plus,
   Search,
   MapPin,
   Clock,
@@ -19,7 +18,6 @@ import {
 import toast from 'react-hot-toast';
 import type { Store as StoreType } from '../../../types';
 import { adminService } from '../../../api/services';
-import QuickStoreModal from './QuickStoreModal';
 import AdminStoreMenuModal from './AdminStoreMenuModal';
 
 interface StoreApprovalTabProps {
@@ -33,7 +31,6 @@ export const StoreApprovalTab: React.FC<StoreApprovalTabProps> = ({
 }) => {
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'PENDING' | 'ACTIVE'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isQuickModalOpen, setIsQuickModalOpen] = useState(false);
   const [menuModalStoreId, setMenuModalStoreId] = useState<string | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
@@ -107,26 +104,15 @@ export const StoreApprovalTab: React.FC<StoreApprovalTabProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* 1. Header & Nút Tạo Quán Test */}
-      <div className="bg-white p-6 rounded-2xl border border-orange-100 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-black text-gray-900 flex items-center gap-2">
-            <Store className="w-6 h-6 text-[#FF5A1F]" />
-            Thẩm Định & Phê Duyệt Cửa Hàng Đối Tác
-          </h2>
-          <p className="text-xs sm:text-sm text-gray-500 mt-1">
-            Kiểm tra hồ sơ cửa hàng, phê duyệt hoặc từ chối mở bán và kiểm duyệt thực đơn ngay trong hệ thống Admin
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setIsQuickModalOpen(true)}
-          className="px-5 py-3 rounded-xl bg-gradient-to-r from-orange-500 via-orange-600 to-rose-500 text-white font-black text-xs shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer self-start md:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Đăng Ký Thử Quán Mới (Chờ Duyệt)</span>
-        </button>
+      {/* 1. Header */}
+      <div className="bg-white p-6 rounded-2xl border border-orange-100 shadow-xs">
+        <h2 className="text-xl sm:text-2xl font-black text-gray-900 flex items-center gap-2">
+          <Store className="w-6 h-6 text-[#FF5A1F]" />
+          Thẩm Định & Phê Duyệt Cửa Hàng Đối Tác
+        </h2>
+        <p className="text-xs sm:text-sm text-gray-500 mt-1">
+          Kiểm tra hồ sơ cửa hàng, phê duyệt hoặc từ chối mở bán và kiểm duyệt thực đơn ngay trong hệ thống Admin
+        </p>
       </div>
 
       {/* 2. Dải Bộ Lọc & Tìm Kiếm */}
@@ -354,14 +340,6 @@ export const StoreApprovalTab: React.FC<StoreApprovalTabProps> = ({
             Thử chuyển bộ lọc trạng thái hoặc tìm với từ khóa khác.
           </p>
         </div>
-      )}
-
-      {/* Modal Đăng Ký Thử Quán Mới */}
-      {isQuickModalOpen && (
-        <QuickStoreModal
-          onClose={() => setIsQuickModalOpen(false)}
-          onSuccess={onRefreshData}
-        />
       )}
 
       {/* Modal Quản Lý Thực Đơn Dạng List Ngay Trong Admin */}
