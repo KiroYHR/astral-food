@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   TrendingUp,
   DollarSign,
@@ -67,6 +67,12 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ store, orders }) => 
       style: 'currency',
       currency: 'VND',
     }).format(amount);
+  };
+
+  const formatAxisVND = (val: number) => {
+    if (val === 0) return '0đ';
+    if (val < 1_000_000) return `${Math.round(val / 1_000)}k`;
+    return `${(val / 1_000_000).toFixed(1).replace(/\.0$/, '')}Tr`;
   };
 
   // Màu sắc cho Top món bán chạy
@@ -140,9 +146,15 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ store, orders }) => 
           <div className="text-2xl font-black text-gray-900 tracking-tight">
             {analytics ? formatVND(analytics.totalRevenue) : '...'}
           </div>
-          <div className="flex items-center gap-1.5 mt-2 text-xs font-bold text-emerald-600">
-            <ArrowUpRight className="w-3.5 h-3.5" />
-            <span>+18.4% so với chu kỳ trước</span>
+          <div className="flex items-center gap-1.5 mt-2 text-xs font-semibold text-gray-500">
+            {analytics && analytics.totalOrders > 0 ? (
+              <span className="inline-flex items-center gap-1 text-emerald-600 font-bold">
+                <ArrowUpRight className="w-3.5 h-3.5" />
+                Ghi nhận doanh thu thực tế từ hệ thống
+              </span>
+            ) : (
+              <span>Chưa có đơn hàng hoàn tất trong chu kỳ</span>
+            )}
           </div>
         </div>
 
@@ -212,7 +224,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ store, orders }) => 
             <span className="text-sm text-gray-400 font-normal">/ 5.0</span>
           </div>
           <div className="flex items-center gap-1.5 mt-2 text-xs font-semibold text-gray-500">
-            <span>Dựa trên 256 lượt đánh giá 5 sao</span>
+            <span>Đánh giá trung bình cửa hàng trên AstralFood</span>
           </div>
         </div>
       </div>
@@ -226,17 +238,13 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ store, orders }) => 
               Xu Hướng Doanh Thu & Lượng Đơn Đặt Hàng
             </h3>
             <p className="text-xs text-gray-500 mt-0.5">
-              Phân tích biến động doanh thu theo chu kỳ thời gian (Cam San Hô #FF5A1F Solar Starburst)
+              Phân tích biến động doanh thu và số lượng đơn theo chu kỳ đã chọn
             </p>
           </div>
           <div className="flex items-center gap-4 text-xs font-bold text-gray-600">
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-full bg-[#FF5A1F]" />
               <span>Doanh thu (VNĐ)</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-full bg-amber-400" />
-              <span>Số lượng đơn</span>
             </div>
           </div>
         </div>
@@ -249,65 +257,114 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ store, orders }) => 
             </div>
           ) : analytics && analytics.revenueChart.length > 0 ? (
             <ResponsiveContainer width="100%" height={320}>
-              <AreaChart
-                data={analytics.revenueChart}
-                margin={{ top: 10, right: 20, left: 10, bottom: 0 }}
-              >
-                <defs>
-                  <linearGradient id="coralRevGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#FF5A1F" stopOpacity={0.45} />
-                    <stop offset="95%" stopColor="#FF5A1F" stopOpacity={0.0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                <XAxis
-                  dataKey="time"
-                  tickLine={false}
-                  axisLine={{ stroke: '#E2E8F0' }}
-                  tick={{ fill: '#64748B', fontSize: 12, fontWeight: 600 }}
-                />
-                <YAxis
-                  tickLine={false}
-                  axisLine={{ stroke: '#E2E8F0' }}
-                  tick={{ fill: '#64748B', fontSize: 11 }}
-                  tickFormatter={(val) => `${(val / 1000000).toFixed(1)}Tr`}
-                />
-                <Tooltip
-                  content={({ active, payload, label }) => {
-                    if (active && payload && payload.length) {
-                      const data = payload[0].payload;
-                      return (
-                        <div className="bg-gray-900/95 backdrop-blur-md text-white p-3.5 rounded-xl shadow-xl border border-gray-800 text-xs space-y-1">
-                          <p className="font-bold text-orange-400 border-b border-gray-700 pb-1">
-                            {label}
-                          </p>
-                          <p className="flex justify-between gap-4 text-gray-300">
-                            <span>Doanh thu:</span>
-                            <span className="font-bold text-white">
-                              {formatVND(data.revenue)}
-                            </span>
-                          </p>
-                          <p className="flex justify-between gap-4 text-gray-300">
-                            <span>Số lượng đơn:</span>
-                            <span className="font-bold text-amber-300">
-                              {data.ordersCount} đơn
-                            </span>
-                          </p>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="revenue"
-                  stroke="#FF5A1F"
-                  strokeWidth={3}
-                  fillOpacity={1}
-                  fill="url(#coralRevGrad)"
-                />
-              </AreaChart>
+              {period === 'month' || analytics.revenueChart.length <= 1 ? (
+                <BarChart
+                  data={analytics.revenueChart}
+                  margin={{ top: 10, right: 20, left: 10, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                  <XAxis
+                    dataKey="time"
+                    tickLine={false}
+                    axisLine={{ stroke: '#E2E8F0' }}
+                    tick={{ fill: '#64748B', fontSize: 12, fontWeight: 600 }}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={{ stroke: '#E2E8F0' }}
+                    tick={{ fill: '#64748B', fontSize: 11 }}
+                    tickFormatter={formatAxisVND}
+                  />
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <div className="bg-gray-900/95 backdrop-blur-md text-white p-3.5 rounded-xl shadow-xl border border-gray-800 text-xs space-y-1">
+                            <p className="font-bold text-orange-400 border-b border-gray-700 pb-1">
+                              {label}
+                            </p>
+                            <p className="flex justify-between gap-4 text-gray-300">
+                              <span>Doanh thu:</span>
+                              <span className="font-bold text-white">
+                                {formatVND(data.revenue)}
+                              </span>
+                            </p>
+                            <p className="flex justify-between gap-4 text-gray-300">
+                              <span>Số lượng đơn:</span>
+                              <span className="font-bold text-amber-300">
+                                {data.ordersCount} đơn
+                              </span>
+                            </p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Bar dataKey="revenue" fill="#FF5A1F" radius={[8, 8, 0, 0]} maxBarSize={72} />
+                </BarChart>
+              ) : (
+                <AreaChart
+                  data={analytics.revenueChart}
+                  margin={{ top: 10, right: 20, left: 10, bottom: 0 }}
+                >
+                  <defs>
+                    <linearGradient id="coralRevGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#FF5A1F" stopOpacity={0.45} />
+                      <stop offset="95%" stopColor="#FF5A1F" stopOpacity={0.0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                  <XAxis
+                    dataKey="time"
+                    tickLine={false}
+                    axisLine={{ stroke: '#E2E8F0' }}
+                    tick={{ fill: '#64748B', fontSize: 12, fontWeight: 600 }}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={{ stroke: '#E2E8F0' }}
+                    tick={{ fill: '#64748B', fontSize: 11 }}
+                    tickFormatter={formatAxisVND}
+                  />
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <div className="bg-gray-900/95 backdrop-blur-md text-white p-3.5 rounded-xl shadow-xl border border-gray-800 text-xs space-y-1">
+                            <p className="font-bold text-orange-400 border-b border-gray-700 pb-1">
+                              {label}
+                            </p>
+                            <p className="flex justify-between gap-4 text-gray-300">
+                              <span>Doanh thu:</span>
+                              <span className="font-bold text-white">
+                                {formatVND(data.revenue)}
+                              </span>
+                            </p>
+                            <p className="flex justify-between gap-4 text-gray-300">
+                              <span>Số lượng đơn:</span>
+                              <span className="font-bold text-amber-300">
+                                {data.ordersCount} đơn
+                              </span>
+                            </p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="revenue"
+                    stroke="#FF5A1F"
+                    strokeWidth={3}
+                    fillOpacity={1}
+                    fill="url(#coralRevGrad)"
+                  />
+                </AreaChart>
+              )}
             </ResponsiveContainer>
           ) : (
             <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">
@@ -392,7 +449,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ store, orders }) => 
                 Bảng Xếp Hạng 5 Món Hút Khách Nhất
               </h3>
               <p className="text-xs text-gray-500 mt-0.5">
-                Các món mang lại doanh thu cao nhất cho quán
+                Các món được đặt nhiều nhất tại quán
               </p>
             </div>
           </div>

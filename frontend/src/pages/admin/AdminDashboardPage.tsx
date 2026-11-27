@@ -10,6 +10,7 @@ import {
   ChefHat,
   Home,
   LogOut,
+  RefreshCw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { Store as StoreType, User, Order, PlatformOverview } from '../../types';
@@ -32,9 +33,10 @@ export const AdminDashboardPage: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Load all platform data
-  const loadPlatformData = useCallback(async () => {
+  const loadPlatformData = useCallback(async (silent = false) => {
     try {
       const [ov, st, us, ord] = await Promise.all([
         adminService.getPlatformOverview(),
@@ -49,7 +51,9 @@ export const AdminDashboardPage: React.FC = () => {
       setOrders(ord);
     } catch (err: any) {
       console.error('Lỗi khi tải dữ liệu Admin Portal:', err);
-      toast.error('Không thể tải dữ liệu quản trị toàn sàn');
+      if (!silent) {
+        toast.error('Không thể tải dữ liệu quản trị toàn sàn');
+      }
     } finally {
       setLoading(false);
     }
@@ -59,10 +63,18 @@ export const AdminDashboardPage: React.FC = () => {
     loadPlatformData();
   }, [loadPlatformData]);
 
+  // Polling nền mỗi 8s để tự cập nhật quán mới chờ duyệt / đơn hàng mới
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      loadPlatformData(true);
+    }, 8000);
+    return () => window.clearInterval(timer);
+  }, [loadPlatformData]);
+
   // Real-time listener for database updates (when order placed, store approved, etc.)
   useEffect(() => {
     const handleSync = () => {
-      loadPlatformData();
+      loadPlatformData(true);
     };
 
     window.addEventListener('astralfood_db_updated', handleSync);
@@ -73,6 +85,16 @@ export const AdminDashboardPage: React.FC = () => {
       window.removeEventListener('storage', handleSync);
     };
   }, [loadPlatformData]);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await loadPlatformData(false);
+      toast.success('Đã làm mới dữ liệu toàn sàn');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const handleTabChange = (tab: string) => {
     setSearchParams({ tab });
@@ -132,6 +154,19 @@ export const AdminDashboardPage: React.FC = () => {
                   <span>⏳ {pendingStoresCount} Quán Chờ Duyệt</span>
                 </button>
               )}
+
+              {/* Nút làm mới dữ liệu */}
+              <button
+                type="button"
+                id="btn-admin-refresh"
+                onClick={handleManualRefresh}
+                disabled={isRefreshing}
+                className="px-3 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-60"
+                title="Làm mới dữ liệu toàn sàn"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span className="hidden lg:inline">Làm mới</span>
+              </button>
 
               {/* Sang Merchant Hub */}
               <Link

@@ -136,8 +136,26 @@ export const Navbar: React.FC<NavbarProps> = ({ onSearch, searchQuery }) => {
           </div>
         </div>
 
-        {/* Right Actions: Cart & User Account */}
-        <div className="flex items-center gap-3 shrink-0">
+        {/* Right Actions: Role Shortcut, Cart & User Account */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          {isAuthenticated && user?.role === 'MERCHANT' && (
+            <Link
+              to="/merchant"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-orange-50 hover:bg-orange-100 border border-orange-200 text-[#FF5A1F] text-xs font-extrabold transition-colors"
+            >
+              <ChefHat className="w-4 h-4" />
+              <span>Quản lý quán</span>
+            </Link>
+          )}
+          {isAuthenticated && user?.role === 'ADMIN' && (
+            <Link
+              to="/admin"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 text-xs font-extrabold transition-colors"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>Quản trị Admin</span>
+            </Link>
+          )}
           {/* Cart Button */}
           <button
             onClick={toggleCart}

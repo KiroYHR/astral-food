@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { X, Printer, ExternalLink, CheckCircle2, ShieldCheck, Flame } from 'lucide-react';
 import type { Order } from '../types';
 
@@ -60,7 +60,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({ order, onClose }) =>
 
             <div className="text-right">
               <span className="text-lg font-black text-gray-900 block">HÓA ĐƠN ĐIỆN TỬ</span>
-              <p className="font-mono text-xs text-orange-600 font-bold mt-0.5">#{order.id}</p>
+              <p className="font-mono text-xs text-orange-600 font-bold mt-0.5 whitespace-nowrap">#{order.id.slice(-6).toUpperCase()}</p>
               <p className="text-[10px] text-gray-400 mt-0.5">Ngày: {formattedDate}</p>
             </div>
           </div>
@@ -136,10 +136,20 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({ order, onClose }) =>
 
           {/* Paid Stamp & Security Watermark */}
           <div className="flex items-center justify-between pt-4 border-t border-dashed border-gray-200">
-            <div className="flex items-center gap-1.5 text-emerald-700 font-bold text-xs bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span>ĐÃ THANH TOÁN HOÀN TẤT</span>
-            </div>
+            {order.status === 'COMPLETED' ? (
+              <div className="flex items-center gap-1.5 text-emerald-700 font-bold text-xs bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <span>ĐÃ THANH TOÁN HOÀN TẤT</span>
+              </div>
+            ) : order.status === 'CANCELLED' ? (
+              <div className="flex items-center gap-1.5 text-red-700 font-bold text-xs bg-red-50 px-3 py-1.5 rounded-xl border border-red-200">
+                <span>ĐƠN ĐÃ HỦY</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 text-amber-800 font-bold text-xs bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200">
+                <span>CHƯA HOÀN TẤT THANH TOÁN</span>
+              </div>
+            )}
 
             {order.invoice_s3_url && (
               <a

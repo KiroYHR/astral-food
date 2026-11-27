@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import {
   TrendingUp,
   DollarSign,
@@ -11,9 +11,9 @@ import {
   Layers,
   Cpu,
   Clock,
-  ArrowUpRight,
   ShieldCheck,
   AlertCircle,
+  Globe,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -41,6 +41,12 @@ export const PlatformOverviewTab: React.FC<PlatformOverviewTabProps> = ({
       style: 'currency',
       currency: 'VND',
     }).format(amount);
+  };
+
+  const formatAxisVND = (val: number) => {
+    if (val === 0) return '0đ';
+    if (val < 1_000_000) return `${Math.round(val / 1_000)}k`;
+    return `${(val / 1_000_000).toFixed(1).replace(/\.0$/, '')}Tr`;
   };
 
   const barColors = ['#FF5A1F', '#FB923C', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#EC4899', '#64748B'];
@@ -92,9 +98,8 @@ export const PlatformOverviewTab: React.FC<PlatformOverviewTabProps> = ({
           <div className="text-2xl font-black text-gray-900 tracking-tight">
             {overview ? formatVND(overview.totalGMV) : '...'}
           </div>
-          <div className="flex items-center gap-1.5 mt-2 text-xs font-bold text-emerald-600">
-            <ArrowUpRight className="w-3.5 h-3.5" />
-            <span>+24.6% so với tháng trước</span>
+          <div className="flex items-center gap-1.5 mt-2 text-[11px] font-semibold text-gray-500">
+            <span>Tổng giá trị các đơn đã hoàn tất (COMPLETED)</span>
           </div>
         </div>
 
@@ -113,7 +118,7 @@ export const PlatformOverviewTab: React.FC<PlatformOverviewTabProps> = ({
             {overview ? `${overview.totalOrders} đơn` : '...'}
           </div>
           <div className="flex items-center gap-1.5 mt-2 text-xs font-bold text-emerald-600">
-            <span>Tỷ lệ hoàn tất: {overview ? `${overview.completionRate}%` : '95%'}</span>
+            <span>Tỷ lệ hoàn tất: {overview ? `${overview.completionRate}%` : '0%'}</span>
           </div>
         </div>
 
@@ -133,11 +138,11 @@ export const PlatformOverviewTab: React.FC<PlatformOverviewTabProps> = ({
               {overview ? overview.totalStores : '0'}
             </span>
             <span className="text-xs text-gray-500 font-bold">
-              ({overview?.activeStoresCount} hoạt động)
+              ({overview?.activeStoresCount ?? 0} hoạt động)
             </span>
           </div>
           <div className="flex items-center gap-1.5 mt-2 text-xs font-bold text-amber-600">
-            <span>{overview?.pendingStoresCount} quán đang chờ duyệt</span>
+            <span>{overview?.pendingStoresCount ?? 0} quán đang chờ duyệt</span>
           </div>
         </div>
 
@@ -156,7 +161,10 @@ export const PlatformOverviewTab: React.FC<PlatformOverviewTabProps> = ({
             {overview ? `${overview.totalUsers.toLocaleString()} Users` : '...'}
           </div>
           <div className="flex items-center gap-1.5 mt-2 text-[11px] font-semibold text-gray-500">
-            <span>{overview?.customerCount} Khách • {overview?.merchantCount} Quán</span>
+            <span>
+              {overview?.customerCount ?? 0} Khách • {overview?.merchantCount ?? 0} Quán •{' '}
+              {overview?.adminCount ?? 0} Admin
+            </span>
           </div>
         </div>
       </div>
@@ -171,52 +179,60 @@ export const PlatformOverviewTab: React.FC<PlatformOverviewTabProps> = ({
                 <span className="w-2.5 h-2.5 rounded-full bg-[#FF5A1F]" />
                 So Sánh Doanh Số Giữa Các Cửa Hàng Đối Tác
               </h3>
-              <span className="text-xs font-bold text-gray-400 uppercase">Đơn vị: Triệu VNĐ</span>
+              <span className="text-xs font-bold text-gray-400 uppercase">Đơn vị: VNĐ</span>
             </div>
             <p className="text-xs text-gray-500 mb-6">
-              Xếp hạng doanh thu đóng góp trên toàn hệ thống AstralFood
+              Xếp hạng doanh thu đơn đã hoàn tất đóng góp trên toàn hệ thống AstralFood
             </p>
           </div>
 
-          <div className="w-full min-h-[300px]">
+          <div className="w-full min-h-[330px]">
             {overview && overview.storeComparison.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={330}>
                 <BarChart
                   data={overview.storeComparison}
-                  margin={{ top: 10, right: 10, left: 0, bottom: 25 }}
+                  margin={{ top: 10, right: 16, left: 24, bottom: 55 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                   <XAxis
                     dataKey="storeName"
                     tickLine={false}
                     axisLine={{ stroke: '#E2E8F0' }}
-                    tick={{ fill: '#475569', fontSize: 11, fontWeight: 600 }}
-                    interval={0}
-                    angle={-15}
+                    tick={{ fill: '#334155', fontSize: 11, fontWeight: 600 }}
+                    height={70}
+                    angle={-18}
                     textAnchor="end"
+                    interval={0}
+                    tickFormatter={(v: string) => (v.length > 20 ? `${v.slice(0, 18)}...` : v)}
                   />
                   <YAxis
                     tickLine={false}
                     axisLine={{ stroke: '#E2E8F0' }}
                     tick={{ fill: '#64748B', fontSize: 11 }}
-                    tickFormatter={(val) => `${(val / 1000000).toFixed(0)}Tr`}
+                    tickFormatter={formatAxisVND}
                   />
                   <Tooltip
                     content={({ active, payload }) => {
                       if (active && payload && payload.length) {
                         const item = payload[0].payload;
                         return (
-                          <div className="bg-gray-900 text-white p-3 rounded-xl shadow-xl border border-gray-800 text-xs space-y-1">
+                          <div className="bg-gray-900/95 backdrop-blur-md text-white p-3 rounded-xl shadow-xl border border-gray-800 text-xs space-y-1">
                             <p className="font-bold text-orange-400">{item.storeName}</p>
-                            <p>Doanh thu: <span className="font-bold text-white">{formatVND(item.revenue)}</span></p>
-                            <p>Tổng đơn: <span className="font-bold text-amber-300">{item.ordersCount} đơn</span></p>
+                            <p>
+                              Doanh thu (COMPLETED):{' '}
+                              <span className="font-bold">{formatVND(item.revenue)}</span>
+                            </p>
+                            <p>
+                              Tổng đơn hàng:{' '}
+                              <span className="font-bold text-amber-300">{item.ordersCount} đơn</span>
+                            </p>
                           </div>
                         );
                       }
                       return null;
                     }}
                   />
-                  <Bar dataKey="revenue" radius={[6, 6, 0, 0]}>
+                  <Bar dataKey="revenue" radius={[8, 8, 0, 0]} maxBarSize={56}>
                     {overview.storeComparison.map((_, index) => (
                       <Cell key={`cell-${index}`} fill={barColors[index % barColors.length]} />
                     ))}
@@ -225,7 +241,7 @@ export const PlatformOverviewTab: React.FC<PlatformOverviewTabProps> = ({
               </ResponsiveContainer>
             ) : (
               <div className="h-full flex items-center justify-center text-xs text-gray-400">
-                Đang tải dữ liệu biểu đồ đối tác...
+                Chưa có dữ liệu biểu đồ đối tác...
               </div>
             )}
           </div>
@@ -261,7 +277,7 @@ export const PlatformOverviewTab: React.FC<PlatformOverviewTabProps> = ({
                     <div
                       className="h-full rounded-full transition-all duration-500"
                       style={{
-                        width: `${Math.max(4, item.percentage)}%`,
+                        width: `${Math.max(item.count > 0 ? 4 : 0, item.percentage)}%`,
                         backgroundColor: item.color,
                       }}
                     />
@@ -272,7 +288,8 @@ export const PlatformOverviewTab: React.FC<PlatformOverviewTabProps> = ({
 
           <div className="mt-6 pt-4 border-t border-gray-100 text-center">
             <span className="text-xs font-bold text-emerald-600 flex items-center justify-center gap-1">
-              <ShieldCheck className="w-4 h-4" /> 95% đơn hàng được giao thành công
+              <ShieldCheck className="w-4 h-4" />{' '}
+              {overview ? `${overview.completionRate}% đơn hàng đã giao thành công` : 'Đang tính...'}
             </span>
           </div>
         </div>
@@ -280,7 +297,7 @@ export const PlatformOverviewTab: React.FC<PlatformOverviewTabProps> = ({
 
       {/* 4. Giám Sát Sức Khỏe Dịch Vụ AWS & Hoạt Động Gần Đây */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Cột Trái: Trạng Thái Dịch Vụ Cloud (7 cột) */}
+        {/* Cột Trái: Trạng Thái Dịch Vụ Cloud (7 cột - lưới 2x3 chuẩn thực tế) */}
         <div className="lg:col-span-7 bg-white p-6 sm:p-8 rounded-2xl border border-orange-100 shadow-xs">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -289,84 +306,99 @@ export const PlatformOverviewTab: React.FC<PlatformOverviewTabProps> = ({
                 Giám Sát Sức Khỏe Hạ Tầng AWS Cloud
               </h3>
               <p className="text-xs text-gray-500 mt-0.5">
-                Khu vực: <span className="font-mono font-bold text-gray-700">ap-southeast-1 (Singapore)</span>
+                Khu vực:{' '}
+                <span className="font-mono font-bold text-gray-700">ap-southeast-1 (Singapore)</span>
               </p>
             </div>
-            <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 flex items-center gap-1.5">
+            <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 flex items-center gap-1.5 shrink-0">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               100% HEALTHY
             </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-            {/* Dịch vụ 1: Core API Node.js */}
+            {/* Dịch vụ 1: Core API (Amazon EC2) */}
             <div className="p-3.5 rounded-xl border border-gray-100 bg-gray-50/60 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold shrink-0">
                   <Server className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-gray-900">Core RESTful API</h4>
-                  <span className="text-[10px] text-gray-400">Node.js Express / Port 5000</span>
+                  <h4 className="text-xs font-bold text-gray-900">Core API (Amazon EC2)</h4>
+                  <span className="text-[10px] text-gray-500">t3.micro • Node.js Port 8000</span>
                 </div>
               </div>
-              <span className="text-[11px] font-bold text-emerald-600">● 99.98%</span>
+              <span className="text-[11px] font-bold text-emerald-600 shrink-0">● Online</span>
             </div>
 
-            {/* Dịch vụ 2: RDS PostgreSQL */}
+            {/* Dịch vụ 2: Amazon RDS (PostgreSQL) */}
             <div className="p-3.5 rounded-xl border border-gray-100 bg-gray-50/60 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                <div className="w-9 h-9 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold shrink-0">
                   <Database className="w-4 h-4" />
                 </div>
                 <div>
                   <h4 className="text-xs font-bold text-gray-900">Amazon RDS (PostgreSQL)</h4>
-                  <span className="text-[10px] text-gray-400">db.t4g.micro (Multi-AZ)</span>
+                  <span className="text-[10px] text-gray-500">db.t4g.micro (Single-AZ)</span>
                 </div>
               </div>
-              <span className="text-[11px] font-bold text-emerald-600">● Healthy</span>
+              <span className="text-[11px] font-bold text-emerald-600 shrink-0">● Healthy</span>
             </div>
 
-            {/* Dịch vụ 3: S3 Media & Invoices */}
+            {/* Dịch vụ 3: CloudFront + AWS WAF */}
             <div className="p-3.5 rounded-xl border border-gray-100 bg-gray-50/60 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-orange-100 text-[#FF5A1F] flex items-center justify-center font-bold">
+                <div className="w-9 h-9 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold shrink-0">
+                  <Globe className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-gray-900">CloudFront + AWS WAF</h4>
+                  <span className="text-[10px] text-gray-500">HTTPS CDN & Edge Security</span>
+                </div>
+              </div>
+              <span className="text-[11px] font-bold text-emerald-600 shrink-0">● Active</span>
+            </div>
+
+            {/* Dịch vụ 4: Amazon S3 Storage */}
+            <div className="p-3.5 rounded-xl border border-gray-100 bg-gray-50/60 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-orange-100 text-[#FF5A1F] flex items-center justify-center font-bold shrink-0">
                   <Cloud className="w-4 h-4" />
                 </div>
                 <div>
                   <h4 className="text-xs font-bold text-gray-900">Amazon S3 Storage</h4>
-                  <span className="text-[10px] text-gray-400">Media & Presigned URLs</span>
+                  <span className="text-[10px] text-gray-500">Frontend, Media & PDF Invoices</span>
                 </div>
               </div>
-              <span className="text-[11px] font-bold text-emerald-600">● Active</span>
+              <span className="text-[11px] font-bold text-emerald-600 shrink-0">● Synced</span>
             </div>
 
-            {/* Dịch vụ 4: SQS Message Queue */}
+            {/* Dịch vụ 5: Amazon SQS Queue */}
             <div className="p-3.5 rounded-xl border border-gray-100 bg-gray-50/60 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                <div className="w-9 h-9 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center font-bold shrink-0">
                   <Layers className="w-4 h-4" />
                 </div>
                 <div>
                   <h4 className="text-xs font-bold text-gray-900">Amazon SQS Queue</h4>
-                  <span className="text-[10px] text-gray-400">Order Events / 0 Delays</span>
+                  <span className="text-[10px] text-gray-500">astralfood-orders-queue</span>
                 </div>
               </div>
-              <span className="text-[11px] font-bold text-emerald-600">● 0 Lag</span>
+              <span className="text-[11px] font-bold text-emerald-600 shrink-0">● Ready</span>
             </div>
 
-            {/* Dịch vụ 5: Lambda Workers */}
-            <div className="p-3.5 rounded-xl border border-gray-100 bg-gray-50/60 sm:col-span-2 flex items-center justify-between">
+            {/* Dịch vụ 6: AWS Lambda & Amazon SES */}
+            <div className="p-3.5 rounded-xl border border-gray-100 bg-gray-50/60 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
+                <div className="w-9 h-9 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center font-bold shrink-0">
                   <Cpu className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-gray-900">AWS Lambda Workers</h4>
-                  <span className="text-[10px] text-gray-400">Serverless PDF Invoices & Email Notification Workers</span>
+                  <h4 className="text-xs font-bold text-gray-900">AWS Lambda & Amazon SES</h4>
+                  <span className="text-[10px] text-gray-500">order-processor (Node 22.x) + Email</span>
                 </div>
               </div>
-              <span className="text-[11px] font-bold text-emerald-600">● Auto-Scale Ready</span>
+              <span className="text-[11px] font-bold text-emerald-600 shrink-0">● Connected</span>
             </div>
           </div>
         </div>
@@ -382,19 +414,26 @@ export const PlatformOverviewTab: React.FC<PlatformOverviewTabProps> = ({
           </div>
 
           <div className="space-y-3.5">
-            {overview &&
+            {overview && overview.recentActivities.length > 0 ? (
               overview.recentActivities.map((act) => (
                 <div
                   key={act.id}
                   className="p-3 rounded-xl bg-gray-50/70 border border-gray-100/80 space-y-1 hover:bg-orange-50/40 transition-colors"
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-bold text-gray-900">{act.title}</span>
-                    <span className="text-[10px] font-semibold text-gray-400">{act.timestamp}</span>
+                    <span className="text-[10px] font-semibold text-gray-400 shrink-0">
+                      {act.timestamp}
+                    </span>
                   </div>
                   <p className="text-[11px] text-gray-600 leading-relaxed">{act.description}</p>
                 </div>
-              ))}
+              ))
+            ) : (
+              <div className="p-8 text-center text-xs text-gray-400">
+                Chưa có hoạt động giao dịch nào gần đây.
+              </div>
+            )}
           </div>
         </div>
       </div>

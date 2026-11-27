@@ -38,7 +38,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRoles, children 
 export const App: React.FC = () => {
   return (
     <BrowserRouter>
-      <Toaster position="top-right" />
+      <Toaster position="bottom-right" />
       <Routes>
         {/* Auth Routes */}
         <Route path="/login" element={<LoginPage />} />
