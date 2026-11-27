@@ -164,6 +164,20 @@ function createOrderConfirmationHTML(orderData) {
 }
 
 /**
+ * Kiểm tra lỗi SES không nên retry (ví dụ SES Sandbox từ chối email chưa xác minh: MessageRejected).
+ * Nếu đưa các lỗi này vào SQS batchItemFailures sẽ gây vòng lặp retry vô hạn.
+ */
+function isNonRetryableSesError(err) {
+  if (!err) return false;
+  const code = String(err.name || err.Code || err.code || '');
+  const message = String(err.message || '');
+  if (code === 'MessageRejected') return true;
+  if (/Email address is not verified/i.test(message)) return true;
+  if (/identities failed the check/i.test(message)) return true;
+  return false;
+}
+
+/**
  * Xử lý gửi Email thông báo đơn hàng qua Amazon SES
  */
 async function processNotification(orderData) {
@@ -192,40 +206,59 @@ async function processNotification(orderData) {
   }
 
   const client = getSESClient(region);
-  const result = await client.send(
-    new SendEmailCommand({
-      Source: senderEmail,
-      Destination: {
-        ToAddresses: [recipientEmail],
-      },
-      Message: {
-        Subject: {
-          Data: subject,
-          Charset: 'UTF-8',
+  try {
+    const result = await client.send(
+      new SendEmailCommand({
+        Source: senderEmail,
+        Destination: {
+          ToAddresses: [recipientEmail],
         },
-        Body: {
-          Html: {
-            Data: htmlBody,
+        Message: {
+          Subject: {
+            Data: subject,
             Charset: 'UTF-8',
           },
+          Body: {
+            Html: {
+              Data: htmlBody,
+              Charset: 'UTF-8',
+            },
+          },
         },
-      },
-    })
-  );
+      })
+    );
 
-  console.log(`[SES SUCCESS] Message ID: ${result.MessageId}`);
-  return {
-    skipped: false,
-    simulated: false,
-    recipientEmail,
-    subject,
-    messageId: result.MessageId,
-    statusLabel: statusMeta.label,
-  };
+    console.log(`[SES SUCCESS] Message ID: ${result.MessageId}`);
+    return {
+      skipped: false,
+      simulated: false,
+      recipientEmail,
+      subject,
+      messageId: result.MessageId,
+      statusLabel: statusMeta.label,
+    };
+  } catch (err) {
+    if (isNonRetryableSesError(err)) {
+      console.warn(
+        `[SES][SKIPPED] Bỏ qua lỗi SES Sandbox/MessageRejected cho đơn ${orderData.id} (${recipientEmail}) để không retry vòng lặp SQS: ${err.message}`
+      );
+      return {
+        skipped: true,
+        simulated: false,
+        reason: 'SES_MESSAGE_REJECTED',
+        errorMessage: err.message,
+        recipientEmail,
+        subject,
+        statusLabel: statusMeta.label,
+      };
+    }
+    throw err;
+  }
 }
 
 module.exports = {
   processNotification,
   createOrderConfirmationHTML,
   escapeHtml,
+  isNonRetryableSesError,
 };

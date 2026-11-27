@@ -3,7 +3,7 @@
 Thư mục này chứa **1 AWS Lambda Worker duy nhất (`order-processor/`)** gắn trực tiếp vào hàng đợi **Amazon SQS (`astralfood-orders-queue`)** và chạy song song 2 tác vụ bằng **`Promise.allSettled`**:
 
 1. **Invoice Service (`invoiceService.js`):** Sinh hóa đơn PDF khổ A4 bằng `pdfkit` và lưu lên **Amazon S3** tại `invoices/INV-{orderId}.pdf` (chạy cho sự kiện `ORDER_CREATED` và khi đơn chuyển `COMPLETED`).
-2. **Notification Service (`notificationService.js`):** Render email HTML cho đủ 6 trạng thái đơn hàng (kèm nút tải PDF khi `COMPLETED`, chống XSS bằng `escapeHtml`) và gửi qua **Amazon SES**.
+2. **Notification Service (`notificationService.js`):** Render email HTML cho đủ 6 trạng thái đơn hàng (kèm nút tải PDF khi `COMPLETED`, chống XSS bằng `escapeHtml`) và gửi qua **Amazon SES**. Tự động bỏ qua lỗi không thể retry từ SES Sandbox (`MessageRejected` khi email người nhận chưa verify) để không gây vòng lặp retry vô hạn trên SQS.
 
 > **Tại sao gộp thành 1 Lambda duy nhất?**  
 > Một SQS Queue (`astralfood-orders-queue`) không thể fan-out cùng 1 message cho 2 Lambda riêng biệt (SQS chỉ giao mỗi message cho 1 consumer). Gộp vào `order-processor` và chạy song song qua `Promise.allSettled` đảm bảo mỗi đơn hàng đều vừa tạo hóa đơn PDF lên S3 vừa gửi email SES, không cần thêm SNS Topic hay SQS Queue thứ 2, đồng thời hỗ trợ chuẩn `ReportBatchItemFailures`.
@@ -51,8 +51,9 @@ lambda-workers/
 4. Cập nhật `INVOICE_S3_BUCKET=astralfood-invoices-<account-id>` vào `.env` của Backend.
 
 ### Cách 2: Triển khai trực tiếp trên AWS Console *(không cần cài AWS CLI)*
-1. **Tạo S3 Bucket hóa đơn:**
+1. **Tạo S3 Bucket hóa đơn & mở Public Read chỉ cho `invoices/*`:**
    - Vào **Amazon S3** → **Create bucket** → Region `ap-southeast-1` → đặt tên `astralfood-invoices-<account-id>` (ví dụ `astralfood-invoices-722769295479`).
+   - Vào tab **Permissions** → **Block public access** (tắt `BlockPublicPolicy` & `RestrictPublicBuckets`) → thêm **Bucket policy** cho phép `s3:GetObject` công khai duy nhất trên `arn:aws:s3:::astralfood-invoices-<account-id>/invoices/*` để link tải PDF không bị `403 Forbidden`.
    - Cập nhật lại biến `INVOICE_S3_BUCKET` tương ứng ở Backend (`.env`).
 2. **Xác minh Email trên Amazon SES:**
    - Vào **Amazon SES** (`ap-southeast-1`) → **Identities** → **Create identity** → chọn **Email address** → nhập email gửi (và email khách nhận thử nghiệm nếu tài khoản đang ở chế độ SES Sandbox) → mở hộp thư bấm **Verify**.

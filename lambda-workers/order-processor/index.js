@@ -8,6 +8,7 @@ const {
   processNotification,
   createOrderConfirmationHTML,
   escapeHtml,
+  isNonRetryableSesError,
 } = require('./notificationService');
 
 /**
@@ -31,8 +32,15 @@ async function processOrderRecord(orderData, deps = {}) {
   }
 
   if (notificationResult.status === 'rejected') {
-    console.error(`[ORDER ${orderData.id}] Lỗi Notification SES:`, notificationResult.reason);
-    errors.push({ task: 'notification', reason: notificationResult.reason });
+    if (isNonRetryableSesError(notificationResult.reason)) {
+      console.warn(
+        `[ORDER ${orderData.id}] Bỏ qua lỗi SES không thể retry (MessageRejected) để tránh vòng lặp SQS:`,
+        notificationResult.reason?.message || notificationResult.reason
+      );
+    } else {
+      console.error(`[ORDER ${orderData.id}] Lỗi Notification SES:`, notificationResult.reason);
+      errors.push({ task: 'notification', reason: notificationResult.reason });
+    }
   }
 
   return {
@@ -98,3 +106,4 @@ exports.toAsciiVietnamese = toAsciiVietnamese;
 exports.processNotification = processNotification;
 exports.createOrderConfirmationHTML = createOrderConfirmationHTML;
 exports.escapeHtml = escapeHtml;
+exports.isNonRetryableSesError = isNonRetryableSesError;

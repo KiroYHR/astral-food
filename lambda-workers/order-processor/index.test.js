@@ -120,3 +120,36 @@ test('Promise.allSettled độc lập: nếu SES lỗi, Invoice PDF vẫn chạy
     { itemIdentifier: 'msg-bad-json' },
   ]);
 });
+
+test('SES Sandbox MessageRejected (email chưa verify) không đưa vào batchItemFailures để tránh vòng lặp retry SQS', async () => {
+  process.env.LOCAL_SIMULATION = 'true';
+  let invoiceRan = false;
+
+  const sesErr = new Error('Email address is not verified. The following identities failed the check in region AP-SOUTHEAST-1: customer@gmail.com');
+  sesErr.name = 'MessageRejected';
+
+  assert.equal(worker.isNonRetryableSesError(sesErr), true);
+  assert.equal(worker.isNonRetryableSesError(new Error('SES ThrottlingException')), false);
+
+  const res = await worker.handler(
+    {
+      Records: [
+        { messageId: 'msg-unverified-email', body: JSON.stringify({ ...sampleOrder, customerEmail: 'customer@gmail.com' }) },
+      ],
+    },
+    {},
+    {
+      processInvoice: async (order) => {
+        invoiceRan = true;
+        return { skipped: false, s3Key: `invoices/INV-${order.id}.pdf` };
+      },
+      processNotification: async () => {
+        throw sesErr;
+      },
+    }
+  );
+
+  assert.equal(invoiceRan, true);
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.batchItemFailures, []);
+});
