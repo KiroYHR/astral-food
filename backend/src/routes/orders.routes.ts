@@ -6,7 +6,7 @@ import { config } from '../config/index.js';
 import { sendOrderEventToSQS, OrderSQSEventType } from '../services/sqsService.js';
 import { getStoreAnalyticsData } from '../services/analyticsService.js';
 import { serializeOrder } from '../utils/serializer.js';
-import { requireAuth, requireRole } from '../middleware/auth.middleware.js';
+import { requireAuth, requireRole, AuthRequest } from '../middleware/auth.middleware.js';
 
 export const ordersRouter = Router();
 
@@ -87,6 +87,31 @@ function calculateVoucherDiscount(voucherCode: string | undefined, rawTotal: num
   return Math.min(discount, rawTotal);
 }
 
+export async function assertStoreOwnership(
+  storeId: string,
+  req: AuthRequest,
+  res: Response
+): Promise<{ id: string; ownerId: string } | null> {
+  const store = await prisma.store.findUnique({
+    where: { id: storeId },
+    select: { id: true, ownerId: true },
+  });
+
+  if (!store) {
+    res.status(404).json({ error: 'Không tìm thấy thông tin cửa hàng.' });
+    return null;
+  }
+
+  if (req.user && req.user.role !== 'ADMIN' && store.ownerId !== req.user.sub) {
+    res.status(403).json({
+      error: 'Bạn không có quyền thao tác trên cửa hàng của chủ quán khác.',
+    });
+    return null;
+  }
+
+  return store;
+}
+
 // Handler dùng chung cho GET /api/v1/stores/:id/orders và GET /api/v1/orders/stores/:storeId/orders
 export async function getStoreOrdersHandler(req: Request, res: Response) {
   try {
@@ -96,6 +121,9 @@ export async function getStoreOrdersHandler(req: Request, res: Response) {
     if (!storeId) {
       return res.status(400).json({ error: 'Thiếu mã cửa hàng (storeId).' });
     }
+
+    const ownedStore = await assertStoreOwnership(storeId, req as AuthRequest, res);
+    if (!ownedStore) return;
 
     const where: { storeId: string; status?: OrderStatus } = { storeId };
 
@@ -133,6 +161,9 @@ export async function getStoreAnalyticsHandler(req: Request, res: Response) {
     if (!storeId) {
       return res.status(400).json({ error: 'Thiếu mã cửa hàng (storeId).' });
     }
+
+    const ownedStore = await assertStoreOwnership(storeId, req as AuthRequest, res);
+    if (!ownedStore) return;
 
     const analytics = await getStoreAnalyticsData(storeId, period);
     return res.json(analytics);
@@ -340,10 +371,10 @@ ordersRouter.get('/my-orders', requireAuth, async (req: Request, res: Response) 
 });
 
 // 4. Chủ quán xem danh sách đơn hàng khách đặt vào quán của mình (TV3 Điểm 3)
-ordersRouter.get('/stores/:storeId/orders', getStoreOrdersHandler);
+ordersRouter.get('/stores/:storeId/orders', requireRole('MERCHANT', 'ADMIN'), getStoreOrdersHandler);
 
 // 5. Chủ quán xem thống kê doanh thu (Analytics)
-ordersRouter.get('/stores/:storeId/analytics', getStoreAnalyticsHandler);
+ordersRouter.get('/stores/:storeId/analytics', requireRole('MERCHANT', 'ADMIN'), getStoreAnalyticsHandler);
 
 // 6. Cập nhật trạng thái đơn hàng (Xác nhận, Chế biến, Giao hàng, Hoàn tất, Hủy) -> Bắn SQS thông báo
 ordersRouter.patch('/:id/status', requireRole('MERCHANT', 'ADMIN'), async (req: Request, res: Response) => {
@@ -356,10 +387,20 @@ ordersRouter.patch('/:id/status', requireRole('MERCHANT', 'ADMIN'), async (req: 
     }
 
     const status = rawStatus as OrderStatus;
-    const existingOrder = await prisma.order.findUnique({ where: { id } });
+    const existingOrder = await prisma.order.findUnique({
+      where: { id },
+      include: { store: { select: { ownerId: true } } },
+    });
 
     if (!existingOrder) {
       return res.status(404).json({ error: `Không tìm thấy đơn hàng ID: ${id}` });
+    }
+
+    const authUser = (req as AuthRequest).user;
+    if (authUser && authUser.role !== 'ADMIN' && existingOrder.store.ownerId !== authUser.sub) {
+      return res.status(403).json({
+        error: 'Bạn chỉ có quyền cập nhật đơn hàng thuộc cửa hàng của mình.',
+      });
     }
 
     const nextInvoiceUrl =

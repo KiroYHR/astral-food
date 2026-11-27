@@ -1,8 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../prisma.js';
 import { serializeStore, serializeCategory, serializeProduct } from '../utils/serializer.js';
-import { getStoreOrdersHandler, getStoreAnalyticsHandler } from './orders.routes.js';
-import { requireRole } from '../middleware/auth.middleware.js';
+import {
+  getStoreOrdersHandler,
+  getStoreAnalyticsHandler,
+  assertStoreOwnership,
+} from './orders.routes.js';
+import { requireRole, AuthRequest } from '../middleware/auth.middleware.js';
 
 export const storesRouter = Router();
 
@@ -27,34 +31,51 @@ storesRouter.get('/', async (req: Request, res: Response) => {
   }
 });
 
-// 2. Lấy thông tin cửa hàng của Merchant hiện tại (TV3 Điểm 2)
-storesRouter.get('/me', async (req: Request, res: Response) => {
+// 2. Lấy danh sách cửa hàng thuộc quyền sở hữu của Merchant đang đăng nhập (hoặc tất cả nếu Admin ?all=true)
+storesRouter.get('/mine', requireRole('MERCHANT', 'ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
-    const { ownerId } = req.query;
-    let where: any = {};
-    if (ownerId && typeof ownerId === 'string') {
-      where.ownerId = ownerId;
+    const authUser = req.user;
+    if (!authUser?.sub) {
+      return res.status(401).json({ error: 'Yêu cầu đăng nhập.' });
     }
 
-    let store = await prisma.store.findFirst({
-      where,
+    const showAllForAdmin = authUser.role === 'ADMIN' && req.query.all === 'true';
+    const stores = await prisma.store.findMany({
+      where: showAllForAdmin ? {} : { ownerId: authUser.sub },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return res.json(stores.map(serializeStore));
+  } catch (error) {
+    console.error('[STORES MINE ERROR]', error);
+    return res.status(500).json({ error: 'Không thể tải danh sách cửa hàng của bạn.' });
+  }
+});
+
+// 2b. Lấy cửa hàng đầu tiên thuộc sở hữu của Merchant hiện tại
+storesRouter.get('/me', requireRole('MERCHANT', 'ADMIN'), async (req: AuthRequest, res: Response) => {
+  try {
+    const authUser = req.user;
+    const targetOwnerId =
+      authUser?.role === 'ADMIN' && typeof req.query.ownerId === 'string'
+        ? req.query.ownerId
+        : authUser?.sub;
+
+    if (!targetOwnerId) {
+      return res.status(401).json({ error: 'Yêu cầu đăng nhập.' });
+    }
+
+    const store = await prisma.store.findFirst({
+      where: { ownerId: targetOwnerId },
       include: {
         categories: { orderBy: { displayOrder: 'asc' } },
         products: { orderBy: { createdAt: 'desc' } },
       },
+      orderBy: { createdAt: 'desc' },
     });
 
     if (!store) {
-      store = await prisma.store.findFirst({
-        include: {
-          categories: { orderBy: { displayOrder: 'asc' } },
-          products: { orderBy: { createdAt: 'desc' } },
-        },
-      });
-    }
-
-    if (!store) {
-      return res.status(404).json({ error: 'Chưa tìm thấy cửa hàng của bạn.' });
+      return res.status(404).json({ error: 'Bạn chưa tạo cửa hàng nào.' });
     }
 
     return res.json(serializeStore(store));
@@ -87,15 +108,24 @@ storesRouter.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
-// 4. Tạo cửa hàng mới
-storesRouter.post('/', requireRole('MERCHANT', 'ADMIN'), async (req: Request, res: Response) => {
+// 4. Tạo cửa hàng mới (Tự động gắn ownerId từ JWT và tạo sẵn danh mục mặc định "Món Chính")
+storesRouter.post('/', requireRole('MERCHANT', 'ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
-    const { ownerId, name, description, address, logoS3Url, logo_s3_url } = req.body;
+    const { ownerId, owner_id, name, description, address, logoS3Url, logo_s3_url } = req.body;
+    const authUser = req.user;
 
-    let targetOwnerId = ownerId;
-    if (!targetOwnerId) {
+    let targetOwnerId =
+      authUser?.role === 'ADMIN' && (ownerId || owner_id)
+        ? String(ownerId || owner_id)
+        : authUser?.sub;
+
+    if (!targetOwnerId && process.env.ALLOW_DEV_MOCK_AUTH === 'true') {
       const merchant = await prisma.user.findFirst({ where: { role: 'MERCHANT' } });
       targetOwnerId = merchant?.id;
+    }
+
+    if (!targetOwnerId) {
+      return res.status(401).json({ error: 'Yêu cầu đăng nhập để tạo cửa hàng.' });
     }
 
     if (!name || !address) {
@@ -104,11 +134,24 @@ storesRouter.post('/', requireRole('MERCHANT', 'ADMIN'), async (req: Request, re
 
     const store = await prisma.store.create({
       data: {
-        ownerId: targetOwnerId!,
-        name,
-        description: description || '',
-        address,
-        logoS3Url: logoS3Url || logo_s3_url || 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=500&q=80',
+        ownerId: targetOwnerId,
+        name: String(name).trim(),
+        description: description ? String(description).trim() : '',
+        address: String(address).trim(),
+        logoS3Url:
+          logoS3Url ||
+          logo_s3_url ||
+          'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=500&q=80',
+        categories: {
+          create: {
+            name: 'Món Chính',
+            displayOrder: 1,
+          },
+        },
+      },
+      include: {
+        categories: { orderBy: { displayOrder: 'asc' } },
+        products: true,
       },
     });
 
@@ -120,9 +163,12 @@ storesRouter.post('/', requireRole('MERCHANT', 'ADMIN'), async (req: Request, re
 });
 
 // 5. Cập nhật thông tin cửa hàng (TV3 Điểm 2)
-storesRouter.put('/:id', requireRole('MERCHANT', 'ADMIN'), async (req: Request, res: Response) => {
+storesRouter.put('/:id', requireRole('MERCHANT', 'ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
+    const ownedStore = await assertStoreOwnership(id, req, res);
+    if (!ownedStore) return;
+
     const { name, description, address, logoS3Url, logo_s3_url, isActive, is_active } = req.body;
 
     const updated = await prisma.store.update({
@@ -159,9 +205,12 @@ storesRouter.get('/:id/categories', async (req: Request, res: Response) => {
 });
 
 // 7. Tạo danh mục món ăn mới (TV3 Điểm 2)
-storesRouter.post('/:id/categories', requireRole('MERCHANT', 'ADMIN'), async (req: Request, res: Response) => {
+storesRouter.post('/:id/categories', requireRole('MERCHANT', 'ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
+    const ownedStore = await assertStoreOwnership(id, req, res);
+    if (!ownedStore) return;
+
     const { name, displayOrder, display_order } = req.body;
 
     if (!name) {
@@ -199,7 +248,7 @@ storesRouter.get('/:id/products', async (req: Request, res: Response) => {
 });
 
 // 9. Thêm món ăn mới vào thực đơn
-storesRouter.post('/products', requireRole('MERCHANT', 'ADMIN'), async (req: Request, res: Response) => {
+storesRouter.post('/products', requireRole('MERCHANT', 'ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
     const { storeId, store_id, categoryId, category_id, name, description, price, imageS3Url, image_s3_url } = req.body;
 
@@ -210,10 +259,29 @@ storesRouter.post('/products', requireRole('MERCHANT', 'ADMIN'), async (req: Req
       return res.status(400).json({ error: 'storeId, name và price là bắt buộc.' });
     }
 
+    const ownedStore = await assertStoreOwnership(actualStoreId, req, res);
+    if (!ownedStore) return;
+
+    let resolvedCategoryId = actualCategoryId;
+    if (!resolvedCategoryId) {
+      const firstCat = await prisma.category.findFirst({
+        where: { storeId: actualStoreId },
+        orderBy: { displayOrder: 'asc' },
+      });
+      if (firstCat) {
+        resolvedCategoryId = firstCat.id;
+      } else {
+        const createdCat = await prisma.category.create({
+          data: { storeId: actualStoreId, name: 'Món Chính', displayOrder: 1 },
+        });
+        resolvedCategoryId = createdCat.id;
+      }
+    }
+
     const product = await prisma.product.create({
       data: {
         storeId: actualStoreId,
-        categoryId: actualCategoryId,
+        categoryId: resolvedCategoryId,
         name,
         description: description || '',
         price,
@@ -229,9 +297,20 @@ storesRouter.post('/products', requireRole('MERCHANT', 'ADMIN'), async (req: Req
 });
 
 // 10. Cập nhật món ăn hoặc bật/tắt Còn hàng/Hết hàng (TV3 Điểm 2)
-storesRouter.patch('/products/:productId', requireRole('MERCHANT', 'ADMIN'), async (req: Request, res: Response) => {
+storesRouter.patch('/products/:productId', requireRole('MERCHANT', 'ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
     const { productId } = req.params;
+    const existingProduct = await prisma.product.findUnique({
+      where: { id: productId },
+      select: { id: true, storeId: true },
+    });
+    if (!existingProduct) {
+      return res.status(404).json({ error: 'Không tìm thấy món ăn.' });
+    }
+
+    const ownedStore = await assertStoreOwnership(existingProduct.storeId, req, res);
+    if (!ownedStore) return;
+
     const { name, description, price, imageS3Url, image_s3_url, isAvailable, is_available, categoryId, category_id } = req.body;
 
     const updated = await prisma.product.update({
@@ -254,9 +333,20 @@ storesRouter.patch('/products/:productId', requireRole('MERCHANT', 'ADMIN'), asy
 });
 
 // 11. Xóa món ăn khỏi thực đơn
-storesRouter.delete('/products/:productId', requireRole('MERCHANT', 'ADMIN'), async (req: Request, res: Response) => {
+storesRouter.delete('/products/:productId', requireRole('MERCHANT', 'ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
     const { productId } = req.params;
+    const existingProduct = await prisma.product.findUnique({
+      where: { id: productId },
+      select: { id: true, storeId: true },
+    });
+    if (!existingProduct) {
+      return res.status(404).json({ error: 'Không tìm thấy món ăn.' });
+    }
+
+    const ownedStore = await assertStoreOwnership(existingProduct.storeId, req, res);
+    if (!ownedStore) return;
+
     await prisma.product.delete({
       where: { id: productId },
     });
@@ -268,13 +358,13 @@ storesRouter.delete('/products/:productId', requireRole('MERCHANT', 'ADMIN'), as
 });
 
 // 12. Danh sách đơn hàng của cửa hàng (TV2 - Đồng bộ API Contract Điểm 3: GET /api/v1/stores/:id/orders)
-storesRouter.get('/:id/orders', getStoreOrdersHandler);
+storesRouter.get('/:id/orders', requireRole('MERCHANT', 'ADMIN'), getStoreOrdersHandler);
 
 // 13. Thống kê Analytics cho cửa hàng (TV2 - Đồng bộ Recharts của TV3: GET /api/v1/stores/:id/analytics)
-storesRouter.get('/:id/analytics', getStoreAnalyticsHandler);
+storesRouter.get('/:id/analytics', requireRole('MERCHANT', 'ADMIN'), getStoreAnalyticsHandler);
 
 // Hỗ trợ cả POST /api/v1/categories trực tiếp theo API Contract của TV3
-storesRouter.post('/categories', requireRole('MERCHANT', 'ADMIN'), async (req: Request, res: Response) => {
+storesRouter.post('/categories', requireRole('MERCHANT', 'ADMIN'), async (req: AuthRequest, res: Response) => {
   try {
     const { storeId, store_id, name, displayOrder, display_order } = req.body;
     const actualStoreId = storeId || store_id;
@@ -282,6 +372,9 @@ storesRouter.post('/categories', requireRole('MERCHANT', 'ADMIN'), async (req: R
     if (!actualStoreId || !name) {
       return res.status(400).json({ error: 'storeId và name là bắt buộc.' });
     }
+
+    const ownedStore = await assertStoreOwnership(actualStoreId, req, res);
+    if (!ownedStore) return;
 
     const category = await prisma.category.create({
       data: {
