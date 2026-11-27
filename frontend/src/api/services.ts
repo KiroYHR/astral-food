@@ -230,6 +230,65 @@ export const storeService = {
     return res;
   },
 
+  async getMyStores(includeAllForAdmin = false): Promise<Store[]> {
+    if (USE_MOCK) {
+      await mockDelay(100);
+      const db = getMockDb();
+      const rawUser = localStorage.getItem('astral_user');
+      const currentUser = rawUser ? (JSON.parse(rawUser) as User) : null;
+      if (currentUser?.role === 'ADMIN' && includeAllForAdmin) return db.stores;
+      return db.stores.filter((s) => s.owner_id === (currentUser?.id || 'user-merchant-1'));
+    }
+    const res: any = await apiClient.get('/stores/mine', {
+      params: includeAllForAdmin ? { all: 'true' } : undefined,
+    });
+    return res;
+  },
+
+  async createStore(data: {
+    name: string;
+    address: string;
+    description?: string;
+    logo_s3_url?: string;
+  }): Promise<Store> {
+    if (USE_MOCK) {
+      await mockDelay();
+      const db = getMockDb();
+      const rawUser = localStorage.getItem('astral_user');
+      const currentUser = rawUser ? (JSON.parse(rawUser) as User) : null;
+      const storeId = `store-${Date.now()}`;
+      const newStore: Store = {
+        id: storeId,
+        owner_id: currentUser?.id || 'user-merchant-1',
+        name: data.name,
+        description: data.description || '',
+        address: data.address,
+        logo_s3_url:
+          data.logo_s3_url ||
+          'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=500&q=80',
+        rating: 5.0,
+        is_active: true,
+        created_at: new Date().toISOString(),
+      };
+      db.stores.unshift(newStore);
+      db.categories.push({
+        id: `cat-${Date.now()}`,
+        store_id: storeId,
+        name: 'Món Chính',
+        display_order: 1,
+      });
+      saveMockDb(db);
+      return newStore;
+    }
+    const res: any = await apiClient.post('/stores', {
+      name: data.name,
+      address: data.address,
+      description: data.description || '',
+      ...(data.logo_s3_url ? { logoS3Url: data.logo_s3_url } : {}),
+    });
+    return res;
+  },
+
   async updateStore(id: string, data: Partial<Store>): Promise<Store> {
     if (USE_MOCK) {
       await mockDelay();
