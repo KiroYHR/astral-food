@@ -34,7 +34,8 @@ Thumbs.db
 .idea/
 *.log
 
-# Báo cáo tiến độ & Lịch sử cá nhân (Không đưa lên Git)
+# Tài liệu nội bộ, báo cáo tiến độ & hướng dẫn (Không đưa lên Git)
 *BAO_CAO*
 *TIEN_DO*
 *LICH_SU*
+docs/
