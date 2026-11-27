@@ -896,7 +896,8 @@ export const adminService = {
 
     const storeComparison = stores.map((s) => {
       const storeOrders = orders.filter((o) => (o.store_id ?? o.storeId) === s.id);
-      const revenue = storeOrders.reduce(
+      const completedStoreOrders = storeOrders.filter((o) => o.status === 'COMPLETED');
+      const revenue = completedStoreOrders.reduce(
         (sum, o) => sum + Number(o.total_amount ?? o.totalAmount ?? 0),
         0
       );
@@ -945,8 +946,8 @@ export const adminService = {
           type: o.status === 'COMPLETED' ? 'ORDER_COMPLETED' : 'ORDER_PLACED',
           title:
             o.status === 'COMPLETED'
-              ? `Đơn #${String(o.id).slice(0, 8)} đã hoàn tất`
-              : `Đơn hàng #${String(o.id).slice(0, 8)} (${o.status})`,
+              ? `Đơn #${String(o.id).slice(-6).toUpperCase()} đã hoàn tất`
+              : `Đơn hàng #${String(o.id).slice(-6).toUpperCase()} (${o.status})`,
           description: `${customerName} đặt đơn ${amount} đ tại ${storeName}`,
           timestamp: createdAt ? new Date(createdAt).toLocaleString('vi-VN') : 'Gần đây',
         };

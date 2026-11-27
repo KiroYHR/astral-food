@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Sparkles,
@@ -53,7 +53,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   const [isUploadingS3, setIsUploadingS3] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [s3UploadedKey, setS3UploadedKey] = useState<string | null>(
-    initialProduct?.image_s3_url ? 'products/verified-s3-asset.webp' : null
+    initialProduct?.image_s3_url ? (initialProduct.image_s3_url.includes('.amazonaws.com/') ? initialProduct.image_s3_url.split('.amazonaws.com/')[1] : 'Ảnh ngoài / URL tùy chỉnh') : null
   );
 
   // Saving state
@@ -117,31 +117,22 @@ export const ProductModal: React.FC<ProductModalProps> = ({
 
     try {
       setIsUploadingS3(true);
-      setUploadProgress(10);
+      setUploadProgress(25);
 
-      // Bước 1: Xin presigned URL
-      const presigned = await mediaService.getPresignedUrl(file.name, file.type);
-      setUploadProgress(40);
+      const finalS3Url = await mediaService.uploadFileToS3(file);
 
-      // Bước 2: Đọc DataURL để hiển thị ảnh thật ngay lập tức
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const dataUrl = event.target?.result as string;
-        setUploadProgress(75);
-
-        // Giả lập tiến trình upload S3 hoàn tất
-        setTimeout(() => {
-          setUploadProgress(100);
-          setImageUrl(dataUrl);
-          setS3UploadedKey(presigned.file_key || `products/${Date.now()}-${file.name}`);
-          setIsUploadingS3(false);
-          toast.success('☁️ Đã tải ảnh lên Amazon S3 Bucket qua Presigned URL!');
-        }, 400);
-      };
-      reader.readAsDataURL(file);
+      setUploadProgress(100);
+      setImageUrl(finalS3Url);
+      setS3UploadedKey(
+        finalS3Url.includes('.amazonaws.com/')
+          ? finalS3Url.split('.amazonaws.com/')[1]
+          : file.name
+      );
+      toast.success('☁️ Đã tải ảnh thật lên Amazon S3 thành công!');
     } catch (err: any) {
+      toast.error(err?.response?.data?.error || err?.message || 'Lỗi khi tải ảnh lên Amazon S3');
+    } finally {
       setIsUploadingS3(false);
-      toast.error(err.message || 'Lỗi khi tải ảnh lên Amazon S3');
     }
   };
 
@@ -254,7 +245,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white text-xs font-bold shadow-xs hover:opacity-95 transition-all cursor-pointer disabled:opacity-50"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>{isGeneratingAI ? 'AI Đang Suy Nghĩ...' : '✨ AI Viết mô tả & Tags chuẩn SEO'}</span>
+                <span>{isGeneratingAI ? 'AI Đang Suy Nghĩ...' : 'AI Viết mô tả & Tags chuẩn SEO'}</span>
               </button>
             </div>
 
@@ -463,7 +454,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
           </div>
 
           {/* Footer Actions */}
-          <div className="pt-4 border-t border-gray-100 flex items-center justify-end gap-3">
+          <div className="sticky bottom-0 bg-white pt-4 pb-1 border-t border-gray-100 flex items-center justify-end gap-3">
             <button
               type="button"
               onClick={onClose}

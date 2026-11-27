@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   Clock,
   ChefHat,
@@ -296,7 +296,7 @@ export const OrderBoardTab: React.FC<OrderBoardTabProps> = ({
             Bảng Điều Phối Đơn Hàng Trực Tuyến
           </h2>
           <p className="text-xs sm:text-sm text-gray-500 mt-1">
-            Đồng bộ thời gian thực với ứng dụng Khách hàng qua WebSocket & SQS Queue
+            Đồng bộ thời gian thực với ứng dụng Khách hàng qua REST API Polling & Amazon SQS
           </p>
         </div>
 

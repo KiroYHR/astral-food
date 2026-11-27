@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   ShoppingBag,
   Store,
@@ -51,32 +51,38 @@ export const GlobalOrdersTab: React.FC<GlobalOrdersTabProps> = ({ orders, stores
     switch (status) {
       case 'PENDING':
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
-            <Clock className="w-3 h-3" /> Chờ xác nhận
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 whitespace-nowrap shrink-0">
+            <Clock className="w-3 h-3 shrink-0" /> Chờ xác nhận
+          </span>
+        );
+      case 'CONFIRMED':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 whitespace-nowrap shrink-0">
+            <CheckCircle2 className="w-3 h-3 shrink-0" /> Đã xác nhận
           </span>
         );
       case 'PREPARING':
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-orange-100 text-[#FF5A1F]">
-            <ChefHat className="w-3 h-3" /> Đang nấu
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-orange-100 text-[#FF5A1F] whitespace-nowrap shrink-0">
+            <ChefHat className="w-3 h-3 shrink-0" /> Đang nấu
           </span>
         );
       case 'DELIVERING':
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700">
-            <Bike className="w-3 h-3" /> Đang giao
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 whitespace-nowrap shrink-0">
+            <Bike className="w-3 h-3 shrink-0" /> Đang giao
           </span>
         );
       case 'COMPLETED':
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-            <CheckCircle2 className="w-3 h-3" /> Hoàn tất
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 whitespace-nowrap shrink-0">
+            <CheckCircle2 className="w-3 h-3 shrink-0" /> Hoàn tất
           </span>
         );
       case 'CANCELLED':
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-gray-100 text-gray-600">
-            <XCircle className="w-3 h-3" /> Đã hủy
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-red-100 text-red-700 whitespace-nowrap shrink-0">
+            <XCircle className="w-3 h-3 shrink-0" /> Đã hủy
           </span>
         );
       default:
@@ -137,6 +143,7 @@ export const GlobalOrdersTab: React.FC<GlobalOrdersTabProps> = ({ orders, stores
             >
               <option value="ALL">Tất cả trạng thái</option>
               <option value="PENDING">Chờ xác nhận (PENDING)</option>
+              <option value="CONFIRMED">Đã xác nhận (CONFIRMED)</option>
               <option value="PREPARING">Đang nấu (PREPARING)</option>
               <option value="DELIVERING">Đang giao (DELIVERING)</option>
               <option value="COMPLETED">Đã hoàn tất (COMPLETED)</option>
@@ -235,14 +242,20 @@ export const GlobalOrdersTab: React.FC<GlobalOrdersTabProps> = ({ orders, stores
 
                   {/* Action */}
                   <td className="py-4 px-4 text-right">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedInvoiceOrder(order)}
-                      className="px-3 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-100 text-[#FF5A1F] border border-orange-200 font-bold text-[11px] inline-flex items-center gap-1.5 cursor-pointer transition-colors"
-                    >
-                      <FileText className="w-3.5 h-3.5" />
-                      <span>Xem Hóa Đơn S3</span>
-                    </button>
+                    {order.status === 'COMPLETED' || Boolean(order.invoice_s3_url) ? (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedInvoiceOrder(order)}
+                        className="px-3 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-100 text-[#FF5A1F] border border-orange-200 font-bold text-[11px] inline-flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap shrink-0"
+                      >
+                        <FileText className="w-3.5 h-3.5 shrink-0" />
+                        <span>Xem Hóa Đơn S3</span>
+                      </button>
+                    ) : (
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-gray-100 text-gray-500 font-semibold text-[11px] whitespace-nowrap shrink-0">
+                        Chưa xuất HĐ
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}

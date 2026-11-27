@@ -1,4 +1,5 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Users,
   Search,
@@ -10,7 +11,6 @@ import {
   Mail,
   UserPlus,
 } from 'lucide-react';
-import toast from 'react-hot-toast';
 import type { User, UserRole } from '../../../types';
 
 interface UserManagementTabProps {
@@ -85,14 +85,13 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ users }) =
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => toast('Tính năng thêm tài khoản mới qua form đăng ký /register', { icon: 'ℹ️' })}
+        <Link
+          to="/register"
           className="px-4 py-2.5 rounded-xl bg-gray-900 hover:bg-black text-white font-bold text-xs flex items-center gap-2 cursor-pointer transition-colors self-start md:self-auto"
         >
           <UserPlus className="w-4 h-4" />
-          <span>+ Thêm Người Dùng Mới</span>
-        </button>
+          <span>Thêm Người Dùng Mới</span>
+        </Link>
       </div>
 
       {/* 2. Bộ Lọc Vai Trò & Ô Tìm Kiếm */}

@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   Store as StoreIcon,
   MapPin,
@@ -51,28 +51,22 @@ export const StoreSettingsTab: React.FC<StoreSettingsTabProps> = ({
 
     try {
       setIsUploading(true);
-      setUploadProgress(15);
+      setUploadProgress(25);
 
-      const presigned = await mediaService.getPresignedUrl(file.name, file.type);
-      setUploadProgress(45);
+      const finalS3Url = await mediaService.uploadFileToS3(file);
 
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const dataUrl = event.target?.result as string;
-        setUploadProgress(85);
-
-        setTimeout(() => {
-          setUploadProgress(100);
-          setLogoUrl(dataUrl);
-          setS3Key(presigned.file_key || `stores/${Date.now()}-${file.name}`);
-          setIsUploading(false);
-          toast.success('☁️ Đã tải logo lên Amazon S3 qua Presigned URL!');
-        }, 400);
-      };
-      reader.readAsDataURL(file);
+      setUploadProgress(100);
+      setLogoUrl(finalS3Url);
+      setS3Key(
+        finalS3Url.includes('.amazonaws.com/')
+          ? finalS3Url.split('.amazonaws.com/')[1]
+          : file.name
+      );
+      toast.success('☁️ Đã tải logo thật lên Amazon S3 thành công!');
     } catch (err: any) {
+      toast.error(err?.response?.data?.error || err?.message || 'Lỗi khi upload logo lên Amazon S3');
+    } finally {
       setIsUploading(false);
-      toast.error(err.message || 'Lỗi khi upload logo lên S3');
     }
   };
 
@@ -111,7 +105,7 @@ export const StoreSettingsTab: React.FC<StoreSettingsTabProps> = ({
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300 max-w-4xl">
+    <div className="space-y-6 animate-in fade-in duration-300 max-w-4xl mx-auto">
       {/* 1. Header & Link xem quán */}
       <div className="bg-white p-6 rounded-2xl border border-orange-100 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

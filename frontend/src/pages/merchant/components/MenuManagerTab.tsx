@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   Utensils,
   Plus,
@@ -128,7 +128,7 @@ export const MenuManagerTab: React.FC<MenuManagerTabProps> = ({
           className="px-5 py-3 rounded-xl bg-gradient-to-r from-orange-500 via-orange-600 to-rose-500 text-white font-black text-xs shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer self-start md:self-auto"
         >
           <Plus className="w-4 h-4" />
-          <span>+ Thêm Món Ăn Mới</span>
+          <span>Thêm Món Ăn Mới</span>
         </button>
       </div>
 

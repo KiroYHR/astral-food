@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   Store,
   CheckCircle2,
@@ -95,7 +95,7 @@ export const StoreApprovalTab: React.FC<StoreApprovalTabProps> = ({
           className="px-5 py-3 rounded-xl bg-gradient-to-r from-orange-500 via-orange-600 to-rose-500 text-white font-black text-xs shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer self-start md:self-auto"
         >
           <Plus className="w-4 h-4" />
-          <span>+ Đăng Ký Thử Quán Mới (Chờ Duyệt)</span>
+          <span>Đăng Ký Thử Quán Mới (Chờ Duyệt)</span>
         </button>
       </div>
 
@@ -204,11 +204,11 @@ export const StoreApprovalTab: React.FC<StoreApprovalTabProps> = ({
                   {/* Status Badge */}
                   <div>
                     {store.is_active ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 whitespace-nowrap shrink-0">
                         <CheckCircle2 className="w-3 h-3" /> Hoạt động
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 animate-pulse whitespace-nowrap shrink-0">
                         <Clock className="w-3 h-3 text-amber-700" /> Chờ duyệt
                       </span>
                     )}

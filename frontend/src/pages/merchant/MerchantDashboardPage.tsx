@@ -15,6 +15,8 @@ import {
   FileText,
   PlusCircle,
   LogOut,
+  Clock,
+  RefreshCw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { Store, Category, Product, Order } from '../../types';
@@ -35,6 +37,7 @@ export const MerchantDashboardPage: React.FC = () => {
   const [allStores, setAllStores] = useState<Store[]>([]);
   const [selectedStore, setSelectedStore] = useState<Store | null>(null);
   const selectedStoreIdRef = useRef<string | null>(null);
+  const knownPendingIdsRef = useRef<Set<string> | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -46,6 +49,7 @@ export const MerchantDashboardPage: React.FC = () => {
   const [newStoreAddress, setNewStoreAddress] = useState('');
   const [newStoreDesc, setNewStoreDesc] = useState('');
   const [isCreatingStore, setIsCreatingStore] = useState(false);
+  const [isCheckingApproval, setIsCheckingApproval] = useState(false);
 
   // Load all data for the active store (multi-tenant filtered by owner)
   const loadData = useCallback(
@@ -116,6 +120,67 @@ export const MerchantDashboardPage: React.FC = () => {
     };
   }, [loadData]);
 
+  // Polling 5s nhận đơn hàng mới realtime từ khách hàng (không cần F5)
+  useEffect(() => {
+    if (!selectedStore?.id || !selectedStore.is_active) return;
+
+    knownPendingIdsRef.current = null;
+
+    const pollStoreOrders = async () => {
+      try {
+        const latestOrders = await orderService.getStoreOrders(selectedStore.id);
+        setOrders(latestOrders);
+
+        const currentPending = latestOrders.filter((o) => o.status === 'PENDING');
+        if (knownPendingIdsRef.current === null) {
+          knownPendingIdsRef.current = new Set(currentPending.map((o) => o.id));
+          return;
+        }
+
+        const newlyArrived = currentPending.filter(
+          (o) => !knownPendingIdsRef.current!.has(o.id)
+        );
+        if (newlyArrived.length > 0) {
+          newlyArrived.forEach((o) => knownPendingIdsRef.current!.add(o.id));
+          toast.success(
+            `🔔 Có ${newlyArrived.length} đơn hàng mới vừa đặt tại ${selectedStore.name}!`,
+            { duration: 6000 }
+          );
+        }
+      } catch {
+        // Bỏ qua âm thầm khi polling nền
+      }
+    };
+
+    const timer = window.setInterval(pollStoreOrders, 5000);
+    return () => window.clearInterval(timer);
+  }, [selectedStore?.id, selectedStore?.is_active, selectedStore?.name]);
+
+  // Polling 5s kiểm tra trạng thái Admin phê duyệt khi quán đang ở trạng thái chờ duyệt
+  useEffect(() => {
+    if (!selectedStore || selectedStore.is_active || user?.role === 'ADMIN') return;
+
+    const pollApproval = async () => {
+      try {
+        const stores = await storeService.getMyStores(false);
+        const current = stores.find((s) => s.id === selectedStore.id);
+        if (current && current.is_active) {
+          toast.success(
+            `🎉 Chúc mừng! Quán "${current.name}" đã được Admin phê duyệt mở bán!`,
+            { duration: 6000 }
+          );
+          await loadData(current.id);
+          setSearchParams({ tab: 'menu' });
+        }
+      } catch {
+        // Bỏ qua âm thầm khi polling nền
+      }
+    };
+
+    const timer = window.setInterval(pollApproval, 5000);
+    return () => window.clearInterval(timer);
+  }, [selectedStore?.id, selectedStore?.is_active, user?.role, loadData, setSearchParams]);
+
   // Tab switch
   const handleTabChange = (tab: string) => {
     setSearchParams({ tab });
@@ -128,6 +193,31 @@ export const MerchantDashboardPage: React.FC = () => {
     setIsStoreDropdownOpen(false);
     loadData(store.id);
     toast.success(`Đã chuyển sang quản lý: ${store.name}`);
+  };
+
+  // Manual check approval status for pending store
+  const handleCheckApprovalStatus = async () => {
+    if (!selectedStore) return;
+    setIsCheckingApproval(true);
+    try {
+      const stores = await storeService.getMyStores(user?.role === 'ADMIN');
+      const current = stores.find((s) => s.id === selectedStore.id);
+      if (current && current.is_active) {
+        toast.success(
+          `🎉 Chúc mừng! Quán "${current.name}" đã được Admin phê duyệt mở bán!`,
+          { duration: 6000 }
+        );
+        await loadData(current.id);
+        setSearchParams({ tab: 'menu' });
+      } else {
+        await loadData(selectedStore.id);
+        toast('⏳ Hồ sơ quán vẫn đang chờ Quản trị viên phê duyệt...', { duration: 3000 });
+      }
+    } catch {
+      toast.error('Không thể kiểm tra trạng thái duyệt lúc này');
+    } finally {
+      setIsCheckingApproval(false);
+    }
   };
 
   // Create first store for new MERCHANT
@@ -144,13 +234,21 @@ export const MerchantDashboardPage: React.FC = () => {
         address: newStoreAddress.trim(),
         description: newStoreDesc.trim(),
       });
-      toast.success(`Đã mở cửa hàng "${created.name}" thành công!`, { icon: '🎉' });
       setNewStoreName('');
       setNewStoreAddress('');
       setNewStoreDesc('');
       selectedStoreIdRef.current = created.id;
-      await loadData(created.id);
-      setSearchParams({ tab: 'menu' });
+      if (!created.is_active) {
+        toast.success(
+          `📩 Đã gửi hồ sơ mở quán "${created.name}"! Vui lòng chờ Quản trị viên (Admin) phê duyệt để bắt đầu thêm món.`,
+          { duration: 6000 }
+        );
+        await loadData(created.id);
+      } else {
+        toast.success(`Đã mở cửa hàng "${created.name}" thành công!`, { icon: '🎉' });
+        await loadData(created.id);
+        setSearchParams({ tab: 'menu' });
+      }
     } catch (err: any) {
       toast.error(err?.response?.data?.error || err?.message || 'Không thể tạo cửa hàng.');
     } finally {
@@ -244,10 +342,14 @@ export const MerchantDashboardPage: React.FC = () => {
                         <span>•</span>
                         <span
                           className={
-                            selectedStore.is_active ? 'text-emerald-600' : 'text-gray-400'
+                            selectedStore.is_active ? 'text-emerald-600' : 'text-amber-600'
                           }
                         >
-                          {selectedStore.is_active ? 'Đang mở cửa' : 'Tạm đóng'}
+                          {selectedStore.is_active
+                            ? 'Đang mở cửa'
+                            : user?.role === 'ADMIN'
+                              ? 'Chờ duyệt / Tạm đóng'
+                              : 'Chờ Admin duyệt'}
                         </span>
                       </div>
                     </div>
@@ -311,10 +413,14 @@ export const MerchantDashboardPage: React.FC = () => {
                       <span>•</span>
                       <span
                         className={
-                          selectedStore.is_active ? 'text-emerald-600' : 'text-gray-400'
+                          selectedStore.is_active ? 'text-emerald-600' : 'text-amber-600'
                         }
                       >
-                        {selectedStore.is_active ? 'Đang mở cửa' : 'Tạm đóng'}
+                        {selectedStore.is_active
+                          ? 'Đang mở cửa'
+                          : user?.role === 'ADMIN'
+                            ? 'Chờ duyệt / Tạm đóng'
+                            : 'Chờ Admin duyệt'}
                       </span>
                     </div>
                   </div>
@@ -323,8 +429,13 @@ export const MerchantDashboardPage: React.FC = () => {
 
             {/* Right: Trạng Thái Mở Cửa & Xem Trang Quán */}
             <div className="flex items-center gap-2 sm:gap-3">
-              {/* Nút bật/tắt mở quán */}
-              {selectedStore && (
+              {/* Trạng thái mở quán / Chờ Admin duyệt */}
+              {selectedStore && !selectedStore.is_active && user?.role !== 'ADMIN' ? (
+                <span className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                  <Clock className="w-3.5 h-3.5 text-amber-600" />
+                  <span>⏳ Chờ Admin duyệt</span>
+                </span>
+              ) : selectedStore && user?.role === 'ADMIN' ? (
                 <button
                   type="button"
                   onClick={handleToggleStoreActive}
@@ -342,10 +453,18 @@ export const MerchantDashboardPage: React.FC = () => {
                   />
                   <span>{selectedStore.is_active ? 'Đang mở cửa' : 'Tạm đóng cửa'}</span>
                 </button>
-              )}
+              ) : selectedStore && selectedStore.is_active ? (
+                <span
+                  className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200"
+                  title="Cửa hàng đang hoạt động công khai trên sàn"
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span>Đang mở cửa</span>
+                </span>
+              ) : null}
 
               {/* Nút Xem trang quán dưới góc nhìn Khách hàng */}
-              {selectedStore && (
+              {selectedStore && (selectedStore.is_active || user?.role === 'ADMIN') && (
                 <Link
                   to={`/stores/${selectedStore.id}`}
                   className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 text-white font-bold text-xs shadow-xs hover:opacity-95 flex items-center gap-1.5 cursor-pointer transition-all"
@@ -357,13 +476,14 @@ export const MerchantDashboardPage: React.FC = () => {
                 </Link>
               )}
 
-              {/* Link quay lại trang chủ khách hàng */}
+              {/* Link chuyển nhanh sang trang Đặt đồ ăn Khách hàng */}
               <Link
                 to="/"
-                className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-900 transition-colors"
-                title="Về Trang Chủ Khách Hàng"
+                className="px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold text-xs flex items-center gap-1.5 transition-colors"
+                title="Chuyển sang giao diện Khách hàng để đặt món"
               >
-                <ArrowLeft className="w-4 h-4" />
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span className="hidden lg:inline">🛒 Đặt đồ ăn (Khách)</span>
               </Link>
 
               {/* Đăng xuất */}
@@ -384,7 +504,7 @@ export const MerchantDashboardPage: React.FC = () => {
           </div>
 
           {/* 2. TABS NAVIGATION BAR (4 TAB CHÍNH) */}
-          {selectedStore && (
+          {selectedStore && (selectedStore.is_active || user?.role === 'ADMIN') && (
             <nav className="flex items-center gap-1 sm:gap-2 overflow-x-auto scrollbar-none py-2 border-t border-gray-100">
               <button
                 type="button"
@@ -470,7 +590,7 @@ export const MerchantDashboardPage: React.FC = () => {
                   Chào mừng Đối tác AstralFood! Hãy thiết lập cửa hàng đầu tiên của bạn
                 </h1>
                 <p className="text-xs sm:text-sm text-gray-500 mt-1.5 leading-relaxed">
-                  Điền thông tin cơ bản bên dưới để kích hoạt gian hàng. Ngay sau khi mở quán, bạn có thể thêm món ăn, tải ảnh S3 và bắt đầu nhận đơn ngay lập tức.
+                  Điền thông tin cơ bản bên dưới để gửi hồ sơ đăng ký quán. Sau khi Quản trị viên (Admin) phê duyệt, bạn có thể thêm món ăn, tải ảnh S3 và bắt đầu nhận đơn ngay lập tức.
                 </p>
               </div>
             </div>
@@ -535,6 +655,51 @@ export const MerchantDashboardPage: React.FC = () => {
                 <span>{isCreatingStore ? 'Đang khởi tạo cửa hàng...' : 'Mở Cửa Hàng Ngay'}</span>
               </button>
             </form>
+          </div>
+        ) : selectedStore && !selectedStore.is_active && user?.role !== 'ADMIN' ? (
+          <div className="max-w-xl mx-auto bg-white rounded-3xl border border-amber-200 shadow-xl shadow-amber-500/5 p-6 sm:p-10 space-y-6">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                <Clock className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold uppercase tracking-wider">
+                  ⏳ Đang chờ Quản trị viên phê duyệt
+                </span>
+                <h2 className="text-xl sm:text-2xl font-black text-gray-900 mt-2">
+                  Hồ Sơ Cửa Hàng Đang Được Thẩm Định
+                </h2>
+                <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
+                  Cửa hàng <span className="font-bold text-gray-900">{selectedStore.name}</span> đã được gửi lên hệ thống. Sau khi Quản trị viên (Admin) phê duyệt, bạn sẽ được mở khóa quyền thêm món ăn, hình ảnh S3 và nhận đơn hàng.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-[#FFFDF9] border border-orange-100 space-y-2 text-xs sm:text-sm text-gray-700">
+              <p><span className="font-bold text-gray-900">Tên quán:</span> {selectedStore.name}</p>
+              <p><span className="font-bold text-gray-900">Địa chỉ:</span> {selectedStore.address}</p>
+              {selectedStore.description && (
+                <p><span className="font-bold text-gray-900">Mô tả:</span> {selectedStore.description}</p>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={handleCheckApprovalStatus}
+                disabled={isCheckingApproval}
+                className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 hover:opacity-95 text-white font-bold text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+              >
+                <RefreshCw className={`w-4 h-4 ${isCheckingApproval ? 'animate-spin' : ''}`} />
+                <span>{isCheckingApproval ? 'Đang kiểm tra...' : 'Kiểm tra trạng thái duyệt'}</span>
+              </button>
+              <Link
+                to="/"
+                className="py-3 px-4 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs sm:text-sm text-center"
+              >
+                Trong lúc chờ, dạo xem món ăn
+              </Link>
+            </div>
           </div>
         ) : (
           selectedStore && (

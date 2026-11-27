@@ -210,7 +210,7 @@ export const CartDrawer: React.FC = () => {
               {/* Price Breakdown */}
               <div className="space-y-1.5 text-xs text-gray-600 pt-2 border-t border-gray-200/60">
                 <div className="flex justify-between">
-                  <span>Tạm tính ({items.length} món):</span>
+                  <span>Tạm tính ({items.reduce((sum, i) => sum + i.quantity, 0)} món):</span>
                   <span className="font-semibold text-gray-900">
                     {subtotal.toLocaleString('vi-VN')} đ
                   </span>

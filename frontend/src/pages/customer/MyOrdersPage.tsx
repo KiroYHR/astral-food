@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Clock,
@@ -10,8 +10,11 @@ import {
   MapPin,
   ShoppingBag,
   ArrowRight,
+  AlertTriangle,
+  X,
 } from 'lucide-react';
 import { orderService } from '../../api/services';
+import toast from 'react-hot-toast';
 import type { Order, OrderStatus } from '../../types';
 import { InvoiceModal } from '../../components/InvoiceModal';
 
@@ -19,6 +22,8 @@ export const MyOrdersPage: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
   const [selectedInvoiceOrder, setSelectedInvoiceOrder] = useState<Order | null>(null);
+  const prevStatusMapRef = useRef<Record<string, OrderStatus> | null>(null);
+  const [rejectedAlerts, setRejectedAlerts] = useState<Order[]>([]);
 
   useEffect(() => {
     loadOrders();
@@ -42,6 +47,54 @@ export const MyOrdersPage: React.FC = () => {
     try {
       const list = await orderService.getMyOrders();
       setOrders(list);
+
+      const prevMap = prevStatusMapRef.current;
+      if (prevMap) {
+        const newlyCancelled: Order[] = [];
+        list.forEach((order) => {
+          const oldStatus = prevMap[order.id];
+          const shortCode = order.id.slice(-6).toUpperCase();
+          if (oldStatus && oldStatus !== order.status) {
+            if (order.status === 'CANCELLED') {
+              newlyCancelled.push(order);
+              toast.error(
+                `Quán ${order.store_name || ''} đã từ chối/hủy đơn #${shortCode}!`,
+                { duration: 7000, icon: '❌' }
+              );
+            } else if (order.status === 'COMPLETED') {
+              toast.success(
+                `Đơn #${shortCode} đã hoàn tất! Bạn có thể xem hóa đơn điện tử ngay.`,
+                { duration: 5000 }
+              );
+            } else {
+              const statusLabels: Record<OrderStatus, string> = {
+                PENDING: 'Chờ xác nhận',
+                CONFIRMED: 'Đã xác nhận',
+                PREPARING: 'Đang nấu',
+                DELIVERING: 'Đang giao',
+                COMPLETED: 'Hoàn tất',
+                CANCELLED: 'Đã hủy',
+              };
+              toast.success(
+                `Quán đã cập nhật trạng thái đơn #${shortCode} → ${statusLabels[order.status] || order.status}`,
+                { duration: 4000 }
+              );
+            }
+          }
+        });
+        if (newlyCancelled.length > 0) {
+          setRejectedAlerts((prev) => [
+            ...newlyCancelled.filter((n) => !prev.some((p) => p.id === n.id)),
+            ...prev,
+          ]);
+        }
+      }
+
+      const nextMap: Record<string, OrderStatus> = {};
+      list.forEach((o) => {
+        nextMap[o.id] = o.status;
+      });
+      prevStatusMapRef.current = nextMap;
     } catch (err) {
       console.error('Error loading orders:', err);
     }
@@ -165,10 +218,42 @@ export const MyOrdersPage: React.FC = () => {
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            Lịch Sử Đơn ({historyOrders.length})
+            Lịch Sử & Đã Hủy ({historyOrders.length})
           </button>
         </div>
       </div>
+
+      {/* Banner cảnh báo khi quán từ chối/hủy đơn */}
+      {rejectedAlerts.length > 0 && (
+        <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-900 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
+            <span className="font-semibold">
+              Quán đã từ chối / hủy <strong>{rejectedAlerts.length}</strong> đơn hàng gần đây của bạn. Bấm vào để xem chi tiết trong mục Lịch Sử & Đã Hủy.
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('history');
+                setRejectedAlerts([]);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold cursor-pointer transition-colors"
+            >
+              Xem đơn đã hủy
+            </button>
+            <button
+              type="button"
+              onClick={() => setRejectedAlerts([])}
+              className="p-1 rounded-lg text-red-600 hover:bg-red-100 cursor-pointer"
+              aria-label="Đóng thông báo"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Orders List */}
       {displayedOrders.length === 0 ? (
@@ -204,7 +289,7 @@ export const MyOrdersPage: React.FC = () => {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-xs font-black text-orange-600 bg-orange-50 px-2.5 py-0.5 rounded-lg border border-orange-200">
-                      #{order.id}
+                      #{order.id.slice(-6).toUpperCase()}
                     </span>
                     <span className="text-xs text-gray-400">
                       {new Date(order.created_at).toLocaleString('vi-VN')}
@@ -228,6 +313,12 @@ export const MyOrdersPage: React.FC = () => {
 
               {/* Progress Stepper for Active Orders */}
               {activeTab === 'active' && renderStepper(order.status)}
+              {activeTab === 'history' && order.status === 'CANCELLED' && (
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 text-red-700 text-xs font-bold border border-red-200">
+                  <XCircle className="w-4 h-4 text-red-600 shrink-0" />
+                  <span>Quán đã từ chối / Đơn hàng đã bị hủy</span>
+                </div>
+              )}
 
               {/* Items List */}
               <div className="space-y-2.5 pt-2">
