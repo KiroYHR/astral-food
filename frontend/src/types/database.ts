@@ -191,6 +191,8 @@ export interface EmailVerificationInfo {
   sent: boolean;
   verified: boolean;
   message: string;
+  welcome_email_sent?: boolean;
+  welcomeEmailSent?: boolean;
 }
 
 export interface AuthResponse {

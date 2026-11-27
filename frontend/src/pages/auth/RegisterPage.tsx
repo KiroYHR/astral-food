@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Flame,
@@ -36,12 +36,78 @@ export const RegisterPage: React.FC = () => {
   const [registeredRole, setRegisteredRole] = useState<'CUSTOMER' | 'MERCHANT'>('CUSTOMER');
   const [isCheckingVerify, setIsCheckingVerify] = useState(false);
   const [isResending, setIsResending] = useState(false);
+  const [isVerifiedSuccess, setIsVerifiedSuccess] = useState(false);
+  const hasRedirectedRef = useRef(false);
 
-  const navigateByRole = (userRole: string) => {
-    if (userRole === 'ADMIN') navigate('/admin', { replace: true });
-    else if (userRole === 'MERCHANT') navigate('/merchant', { replace: true });
-    else navigate('/', { replace: true });
-  };
+  const navigateByRole = useCallback(
+    (userRole: string) => {
+      if (userRole === 'ADMIN') navigate('/admin', { replace: true });
+      else if (userRole === 'MERCHANT') navigate('/merchant', { replace: true });
+      else navigate('/', { replace: true });
+    },
+    [navigate]
+  );
+
+  const completeVerificationSuccess = useCallback(
+    (status: EmailVerificationInfo) => {
+      if (hasRedirectedRef.current) return;
+      hasRedirectedRef.current = true;
+      setVerificationInfo(status);
+      setIsVerifiedSuccess(true);
+
+      const hasWelcome = status.welcome_email_sent || status.welcomeEmailSent;
+      toast.success(
+        hasWelcome
+          ? 'Xác thực thành công! Đã gửi email chào mừng vào Gmail của bạn.'
+          : 'Xác thực email thành công! Sẵn sàng nhận thông báo & hóa đơn qua Gmail.',
+        { icon: '✅', duration: 4000 }
+      );
+
+      setTimeout(() => {
+        navigateByRole(registeredRole);
+      }, 1500);
+    },
+    [navigateByRole, registeredRole]
+  );
+
+  const verifyStatusSilently = useCallback(async () => {
+    if (hasRedirectedRef.current) return;
+    try {
+      const status = await authService.getEmailVerificationStatus(true);
+      setVerificationInfo(status);
+      if (status.verified) {
+        completeVerificationSuccess(status);
+      }
+    } catch {
+      // Bỏ qua âm thầm khi auto-polling ở nền
+    }
+  }, [completeVerificationSuccess]);
+
+  const isAwaitingVerification = Boolean(
+    verificationInfo && !verificationInfo.verified && !isVerifiedSuccess
+  );
+
+  useEffect(() => {
+    if (!isAwaitingVerification) return;
+
+    const onReturnToTab = () => {
+      if (document.visibilityState === 'visible') {
+        void verifyStatusSilently();
+      }
+    };
+
+    window.addEventListener('focus', onReturnToTab);
+    document.addEventListener('visibilitychange', onReturnToTab);
+    const timer = window.setInterval(() => {
+      void verifyStatusSilently();
+    }, 4000);
+
+    return () => {
+      window.removeEventListener('focus', onReturnToTab);
+      document.removeEventListener('visibilitychange', onReturnToTab);
+      window.clearInterval(timer);
+    };
+  }, [isAwaitingVerification, verifyStatusSilently]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,6 +136,8 @@ export const RegisterPage: React.FC = () => {
       });
 
       if (res.email_verification && !res.email_verification.verified) {
+        hasRedirectedRef.current = false;
+        setIsVerifiedSuccess(false);
         setRegisteredRole(targetRole);
         setVerificationInfo(res.email_verification);
         return;
@@ -86,11 +154,10 @@ export const RegisterPage: React.FC = () => {
   const handleCheckVerification = async () => {
     setIsCheckingVerify(true);
     try {
-      const status = await authService.getEmailVerificationStatus();
+      const status = await authService.getEmailVerificationStatus(true);
       setVerificationInfo(status);
       if (status.verified) {
-        toast.success('Email đã được xác thực thành công! Đang chuyển trang...', { icon: '✅' });
-        navigateByRole(registeredRole);
+        completeVerificationSuccess(status);
       } else {
         toast('Chưa thấy xác nhận. Hãy kiểm tra hộp thư (kể cả mục Spam) và bấm link AWS gửi nhé!', {
           icon: '📩',
@@ -109,8 +176,7 @@ export const RegisterPage: React.FC = () => {
       const status = await authService.resendVerificationEmail();
       setVerificationInfo(status);
       if (status.verified) {
-        toast.success('Email đã được xác thực sẵn!', { icon: '✅' });
-        navigateByRole(registeredRole);
+        completeVerificationSuccess(status);
       } else if (status.sent) {
         toast.success('Đã gửi lại email xác thực tới hộp thư của bạn!');
       } else {
@@ -183,6 +249,19 @@ export const RegisterPage: React.FC = () => {
               </div>
             </div>
 
+            {isVerifiedSuccess && (
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs sm:text-sm space-y-1.5">
+                <div className="font-black flex items-center gap-1.5 text-emerald-800">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>🎉 Xác thực email thành công!</span>
+                </div>
+                <p className="leading-relaxed">
+                  Từ giờ khi bạn đặt món, mọi thông báo đơn hàng & hóa đơn PDF sẽ tự động gửi về Gmail của bạn{' '}
+                  <em>(đã gửi kèm email chào mừng vào hộp thư)</em>. Đang chuyển vào trang chủ...
+                </p>
+              </div>
+            )}
+
             <div className="p-4 rounded-2xl bg-[#FFFDF9] border border-orange-200/80 space-y-2.5 text-xs sm:text-sm text-gray-700">
               <p>
                 Tài khoản của bạn đã được tạo thành công cho email:{' '}
@@ -207,7 +286,10 @@ export const RegisterPage: React.FC = () => {
                     Amazon Web Services – Email Address Verification Request
                   </span>
                 </li>
-                <li>Bấm vào đường link xác thực bên trong email rồi quay lại bấm nút kiểm tra bên dưới.</li>
+                <li>
+                  Bấm vào đường link xác thực bên trong email (trình duyệt sẽ mở trang AWS để hoàn tất) → bạn chỉ cần
+                  đóng tab AWS và quay lại trang này, hệ thống sẽ tự động xác nhận.
+                </li>
               </ol>
               <div className="pt-1">
                 <a
@@ -226,7 +308,7 @@ export const RegisterPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleCheckVerification}
-                disabled={isCheckingVerify || isResending}
+                disabled={isCheckingVerify || isResending || isVerifiedSuccess}
                 className="w-full py-3.5 px-4 rounded-xl bg-coral-gradient hover:opacity-95 text-white font-bold text-sm shadow-lg shadow-orange-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60"
               >
                 {isCheckingVerify ? (
@@ -240,7 +322,7 @@ export const RegisterPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleResendVerification}
-                disabled={isCheckingVerify || isResending}
+                disabled={isCheckingVerify || isResending || isVerifiedSuccess}
                 className="w-full py-3 px-4 rounded-xl bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60"
               >
                 <RefreshCw className={`w-4 h-4 ${isResending ? 'animate-spin' : ''}`} />
