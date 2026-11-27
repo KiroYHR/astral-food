@@ -14,6 +14,10 @@ export const SesVerificationBanner: React.FC = () => {
   const [isChecking, setIsChecking] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const notifiedVerifiedRef = useRef(false);
+  const skipBannerForUser =
+    !user ||
+    user.role === 'ADMIN' ||
+    Boolean(user.email && user.email.toLowerCase().endsWith('@astralfood.com'));
 
   const showVerifiedSuccessToast = useCallback((res: EmailVerificationInfo) => {
     if (notifiedVerifiedRef.current) return;
@@ -29,7 +33,7 @@ export const SesVerificationBanner: React.FC = () => {
 
   useEffect(() => {
     let active = true;
-    if (USE_MOCK || !isAuthenticated || !user) {
+    if (USE_MOCK || !isAuthenticated || skipBannerForUser) {
       setInfo(null);
       return;
     }
@@ -51,7 +55,7 @@ export const SesVerificationBanner: React.FC = () => {
   }, [isAuthenticated, user?.id]);
 
   const shouldAutoCheck = Boolean(
-    !USE_MOCK && isAuthenticated && user && !dismissed && info && !info.verified
+    !USE_MOCK && isAuthenticated && !skipBannerForUser && !dismissed && info && !info.verified
   );
 
   useEffect(() => {
@@ -81,7 +85,7 @@ export const SesVerificationBanner: React.FC = () => {
     };
   }, [shouldAutoCheck, showVerifiedSuccessToast]);
 
-  if (USE_MOCK || !isAuthenticated || !user || dismissed || !info || info.verified) {
+  if (USE_MOCK || !isAuthenticated || skipBannerForUser || dismissed || !info || info.verified) {
     return null;
   }
 
