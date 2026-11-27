@@ -19,6 +19,8 @@ export const config = {
     s3PresignedExpires: parseInt(process.env.S3_PRESIGNED_EXPIRES || '300', 10),
     sqsOrderQueueUrl:
       process.env.SQS_ORDER_QUEUE_URL || process.env.AWS_ORDER_SQS_QUEUE_URL || '',
+    sesSenderEmail:
+      process.env.SES_SENDER_EMAIL || process.env.SENDER_EMAIL || 'vuhuyduc1234dn@gmail.com',
   },
 
   ai: {
