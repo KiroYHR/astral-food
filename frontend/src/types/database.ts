@@ -1,4 +1,4 @@
-﻿/**
+/**
  * AstralFood Platform - Database & API Types
  * Khớp 100% với 6 bảng PostgreSQL trong Đề cương và 5 điểm đồng bộ trong docs/xu_t_b_sung_api_db_astralfood.md
  */
@@ -178,10 +178,26 @@ export interface CreateOrderPayload {
 /**
  * Payload phản hồi Auth Token
  */
+export type SesVerificationStatus =
+  | 'VERIFIED'
+  | 'PENDING'
+  | 'UNVERIFIED'
+  | 'SIMULATED'
+  | 'FAILED';
+
+export interface EmailVerificationInfo {
+  email: string;
+  status: SesVerificationStatus;
+  sent: boolean;
+  verified: boolean;
+  message: string;
+}
+
 export interface AuthResponse {
   access_token: string;
   token_type: string;
   user: User;
+  email_verification?: EmailVerificationInfo;
 }
 
 /**

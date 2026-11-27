@@ -3,3 +3,4 @@ export * from './Footer';
 export * from './CartDrawer';
 export * from './FoodDetailModal';
 export * from './InvoiceModal';
+export * from './SesVerificationBanner';

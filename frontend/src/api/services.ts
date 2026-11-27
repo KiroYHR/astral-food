@@ -10,6 +10,7 @@ import type {
   OrderStatus,
   StoreAnalytics,
   AuthResponse,
+  EmailVerificationInfo,
   CreateOrderPayload,
   PresignedUrlResponse,
   AICopilotResponse,
@@ -97,6 +98,13 @@ export const authService = {
         access_token: token,
         token_type: 'Bearer',
         user: newUser,
+        email_verification: {
+          email: payload.email,
+          status: 'SIMULATED',
+          sent: false,
+          verified: true,
+          message: 'Chế độ Mock cục bộ.',
+        },
       };
     }
 
@@ -110,6 +118,7 @@ export const authService = {
       access_token: token,
       token_type: res.token_type || res.tokenType || 'Bearer',
       user: res.user,
+      email_verification: res.email_verification || res.emailVerification,
     };
   },
 
@@ -123,6 +132,36 @@ export const authService = {
       throw new Error('Chưa đăng nhập');
     }
     const res: any = await apiClient.get('/users/me');
+    return res;
+  },
+
+  async getEmailVerificationStatus(): Promise<EmailVerificationInfo> {
+    if (USE_MOCK) {
+      await mockDelay(100);
+      return {
+        email: '',
+        status: 'SIMULATED',
+        sent: false,
+        verified: true,
+        message: 'Chế độ Mock cục bộ.',
+      };
+    }
+    const res: any = await apiClient.get('/auth/email-verification-status');
+    return res;
+  },
+
+  async resendVerificationEmail(): Promise<EmailVerificationInfo> {
+    if (USE_MOCK) {
+      await mockDelay(100);
+      return {
+        email: '',
+        status: 'SIMULATED',
+        sent: false,
+        verified: true,
+        message: 'Chế độ Mock cục bộ.',
+      };
+    }
+    const res: any = await apiClient.post('/auth/resend-verification');
     return res;
   },
 
