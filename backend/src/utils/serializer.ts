@@ -16,6 +16,31 @@ export function serializeCategory(cat: any) {
   };
 }
 
+export function serializeReview(review: any) {
+  if (!review) return null;
+  const customerName =
+    review.customer?.fullName ||
+    review.customer?.full_name ||
+    review.customer_name ||
+    'Khách hàng AstralFood';
+
+  return {
+    id: review.id,
+    order_id: review.orderId || review.order_id,
+    orderId: review.orderId || review.order_id,
+    store_id: review.storeId || review.store_id,
+    storeId: review.storeId || review.store_id,
+    customer_id: review.customerId || review.customer_id,
+    customerId: review.customerId || review.customer_id,
+    customer_name: customerName,
+    customerName,
+    rating: Number(review.rating) || 0,
+    comment: review.comment || '',
+    created_at: review.createdAt || review.created_at || new Date().toISOString(),
+    createdAt: review.createdAt || review.created_at || new Date().toISOString(),
+  };
+}
+
 export function serializeProduct(prod: any) {
   if (!prod) return null;
   const priceNum = Number(prod.price) || 0;
@@ -23,6 +48,7 @@ export function serializeProduct(prod: any) {
     prod.imageS3Url ||
     prod.image_s3_url ||
     'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&q=80';
+  const categoryName = prod.category?.name || prod.category_name || prod.categoryName;
 
   return {
     id: prod.id,
@@ -30,6 +56,7 @@ export function serializeProduct(prod: any) {
     storeId: prod.storeId || prod.store_id,
     category_id: prod.categoryId || prod.category_id,
     categoryId: prod.categoryId || prod.category_id,
+    ...(categoryName ? { category_name: categoryName, categoryName } : {}),
     name: prod.name,
     description: prod.description || '',
     price: priceNum,
@@ -66,6 +93,11 @@ export function serializeStore(store: any) {
     store.logo_s3_url ||
     'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=500&q=80';
   const resolvedCategoryTag = inferCategoryTag(store);
+  const resolvedRating =
+    store.rating !== undefined && store.rating !== null ? Number(store.rating) : 0;
+  const reviewCount =
+    store._count?.reviews ??
+    (Array.isArray(store.reviews) ? store.reviews.length : Number(store.review_count ?? store.reviewCount ?? 0));
 
   return {
     id: store.id,
@@ -76,7 +108,9 @@ export function serializeStore(store: any) {
     address: store.address || '',
     logo_s3_url: logoUrl,
     logoS3Url: logoUrl,
-    rating: Number(store.rating) || 4.9,
+    rating: Number.isFinite(resolvedRating) ? resolvedRating : 0,
+    review_count: reviewCount,
+    reviewCount,
     delivery_time: store.delivery_time || '20-30 phút',
     category_tag: resolvedCategoryTag,
     categoryTag: resolvedCategoryTag,
@@ -100,10 +134,12 @@ export function serializeStore(store: any) {
           _count: store._count,
           products_count: store._count.products ?? 0,
           orders_count: store._count.orders ?? 0,
+          reviews_count: store._count.reviews ?? 0,
         }
       : {}),
     categories: Array.isArray(store.categories) ? store.categories.map(serializeCategory) : undefined,
     products: Array.isArray(store.products) ? store.products.map(serializeProduct) : undefined,
+    ...(Array.isArray(store.reviews) ? { reviews: store.reviews.map(serializeReview) } : {}),
   };
 }
 
@@ -169,6 +205,9 @@ export function serializeOrder(order: any) {
     invoiceS3Url: order.invoiceS3Url || order.invoice_s3_url || '',
     created_at: order.createdAt || order.created_at || new Date().toISOString(),
     createdAt: order.createdAt || order.created_at || new Date().toISOString(),
+    has_reviewed: Boolean(order.review),
+    hasReviewed: Boolean(order.review),
+    review: order.review ? serializeReview(order.review) : null,
     items,
   };
 }

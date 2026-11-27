@@ -432,12 +432,31 @@ async function main() {
       role: Role.CUSTOMER,
     },
   });
-  console.log(`✅ Các tài khoản chính sẵn sàng: ${admin.email}, ${merchant.email} (và merchant2..6@astralfood.com), ${customer.email}`);
+
+  const customer2 = await prisma.user.upsert({
+    where: { email: 'customer2@gmail.com' },
+    update: {},
+    create: {
+      email: 'customer2@gmail.com',
+      passwordHash: passwordHashCustomer,
+      fullName: 'Trần Thị Minh Anh',
+      phone: '0987654322',
+      role: Role.CUSTOMER,
+    },
+  });
+  console.log(`✅ Các tài khoản chính sẵn sàng: ${admin.email}, ${merchant.email} (và merchant2..6@astralfood.com), ${customer.email}, ${customer2.email}`);
 
   let totalStores = 0;
   let totalProducts = 0;
   let firstStoreId = '';
   const firstStoreProducts: { id: string; price: number }[] = [];
+  const seededStoresForReviews: {
+    slug: string;
+    storeId: string;
+    address: string;
+    firstProductId: string;
+    firstProductPrice: number;
+  }[] = [];
 
   for (const s of REAL_STORES) {
     const storeOwner = await prisma.user.upsert({
@@ -523,10 +542,137 @@ async function main() {
         if (store.id === firstStoreId) {
           firstStoreProducts.push({ id: product.id, price: p.price });
         }
+        if (!seededStoresForReviews.some((item) => item.storeId === store.id)) {
+          seededStoresForReviews.push({
+            slug: s.slug,
+            storeId: store.id,
+            address: s.address,
+            firstProductId: product.id,
+            firstProductPrice: p.price,
+          });
+        }
       }
     }
     console.log(`✅ Quán: ${store.name} (${s.address})`);
   }
+
+  // Nạp đánh giá thật từ các đơn COMPLETED cho 6 quán mẫu (nếu quán chưa có review nào)
+  const sampleReviewsMap: Record<
+    string,
+    { rating1: number; comment1: string; rating2: number; comment2: string }
+  > = {
+    'com-tam-phuc-loc-tho': {
+      rating1: 5,
+      comment1: 'Sườn nướng thơm mềm, cơm tấm tơi ngon và nước mắm kẹo rất vừa miệng!',
+      rating2: 5,
+      comment2: 'Giao nhanh còn nóng hổi, phần bì chả đầy đặn đáng tiền.',
+    },
+    'phuc-long-van-hanh-mall': {
+      rating1: 5,
+      comment1: 'Trà đào cam sả chuẩn vị, vị trà đậm thanh mát cực thích.',
+      rating2: 4,
+      comment2: 'Ô long nướng thơm, đóng gói cẩn thận không bị đổ khi ship.',
+    },
+    'pho-hoa-pasteur': {
+      rating1: 5,
+      comment1: 'Nước dùng trong và ngọt thanh chuẩn vị gia truyền, thịt tái rất mềm.',
+      rating2: 5,
+      comment2: 'Đóng gói nước lèo riêng cẩn thận, ăn cùng quẩy giòn rụm.',
+    },
+    'popeyes-cmt8': {
+      rating1: 5,
+      comment1: 'Gà rán vỏ giòn cay Cajun rất bắt miệng, khoai tây chiên giòn.',
+      rating2: 4,
+      comment2: 'Burger tôm nóng giòn, giao đúng giờ hẹn.',
+    },
+    'bun-dau-co-khan': {
+      rating1: 5,
+      comment1: 'Mẹt bún đậu tá lả cực kỳ chất lượng, chả cốm dẻo thơm và mắm tôm ngon.',
+      rating2: 5,
+      comment2: 'Đậu rán vàng giòn bên ngoài béo bên trong, rau sống sạch tươi.',
+    },
+    'astral-gourmet-cafe': {
+      rating1: 5,
+      comment1: 'Cà phê muối béo mịn đậm vị, bánh croissant trứng muối rất thơm.',
+      rating2: 5,
+      comment2: 'Trà sữa trân châu hoàng kim ít ngọt vừa phải, giao rất nhanh.',
+    },
+  };
+
+  for (const item of seededStoresForReviews) {
+    const existingReviewCount = await prisma.review.count({ where: { storeId: item.storeId } });
+    if (existingReviewCount === 0) {
+      const sample = sampleReviewsMap[item.slug] || {
+        rating1: 5,
+        comment1: 'Món ăn ngon, đóng gói sạch sẽ và giao đúng giờ!',
+        rating2: 4,
+        comment2: 'Hương vị ổn định, sẽ ủng hộ quán tiếp.',
+      };
+
+      const order1 = await prisma.order.create({
+        data: {
+          customerId: customer.id,
+          storeId: item.storeId,
+          totalAmount: item.firstProductPrice,
+          discountAmount: 0,
+          status: OrderStatus.COMPLETED,
+          deliveryAddress: '268 Lý Thường Kiệt, Phường 14, Quận 10, TP. Hồ Chí Minh',
+          note: 'Giao giờ trưa',
+          items: {
+            create: [{ productId: item.firstProductId, quantity: 1, unitPrice: item.firstProductPrice }],
+          },
+        },
+      });
+      await prisma.review.create({
+        data: {
+          orderId: order1.id,
+          storeId: item.storeId,
+          customerId: customer.id,
+          rating: sample.rating1,
+          comment: sample.comment1,
+        },
+      });
+
+      const order2 = await prisma.order.create({
+        data: {
+          customerId: customer2.id,
+          storeId: item.storeId,
+          totalAmount: item.firstProductPrice,
+          discountAmount: 0,
+          status: OrderStatus.COMPLETED,
+          deliveryAddress: '135 Hai Bà Trưng, Quận 1, TP. Hồ Chí Minh',
+          note: '',
+          items: {
+            create: [{ productId: item.firstProductId, quantity: 1, unitPrice: item.firstProductPrice }],
+          },
+        },
+      });
+      await prisma.review.create({
+        data: {
+          orderId: order2.id,
+          storeId: item.storeId,
+          customerId: customer2.id,
+          rating: sample.rating2,
+          comment: sample.comment2,
+        },
+      });
+    }
+  }
+
+  // Đồng bộ lại rating thật cho toàn bộ cửa hàng dựa trên bảng reviews (0 nếu chưa có review)
+  const allDbStores = await prisma.store.findMany({ select: { id: true } });
+  for (const dbStore of allDbStores) {
+    const agg = await prisma.review.aggregate({
+      where: { storeId: dbStore.id },
+      _avg: { rating: true },
+    });
+    const avg = agg._avg.rating !== null ? Number(agg._avg.rating.toFixed(2)) : 0;
+    await prisma.store.update({
+      where: { id: dbStore.id },
+      data: { rating: avg },
+    });
+  }
+  console.log(`✅ Đã đồng bộ điểm đánh giá trung bình thực tế cho ${allDbStores.length} cửa hàng.`);
 
   // Nạp 5 đơn hàng COMPLETED rải đều 5 ngày gần đây nếu bảng orders còn trống (để biểu đồ Recharts lên đẹp)
   const existingOrders = await prisma.order.count();

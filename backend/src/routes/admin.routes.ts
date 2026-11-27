@@ -1,6 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../prisma.js';
-import { serializeUser, serializeStore } from '../utils/serializer.js';
+import {
+  serializeUser,
+  serializeStore,
+  serializeCategory,
+  serializeProduct,
+} from '../utils/serializer.js';
 import { requireRole, AuthRequest } from '../middleware/auth.middleware.js';
 import {
   getSesEmailVerificationStatus,
@@ -45,7 +50,7 @@ adminRouter.get('/stores', async (req: Request, res: Response) => {
           select: { id: true, fullName: true, email: true, phone: true },
         },
         _count: {
-          select: { products: true, orders: true },
+          select: { products: true, orders: true, reviews: true },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -290,5 +295,120 @@ adminRouter.delete('/users/:id', async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('[ADMIN USER DELETE ERROR]', error);
     return res.status(500).json({ error: 'Không thể xóa người dùng.' });
+  }
+});
+
+// 8. Admin xem danh sách thực đơn chia theo danh mục của từng quán (dạng List trong Admin)
+adminRouter.get('/stores/:id/menu', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const store = await prisma.store.findUnique({
+      where: { id },
+      include: {
+        owner: {
+          select: { id: true, fullName: true, email: true, phone: true },
+        },
+        _count: {
+          select: { products: true, orders: true, reviews: true },
+        },
+        categories: {
+          orderBy: { displayOrder: 'asc' },
+        },
+        products: {
+          include: {
+            category: { select: { id: true, name: true } },
+          },
+          orderBy: [{ category: { displayOrder: 'asc' } }, { createdAt: 'desc' }],
+        },
+      },
+    });
+
+    if (!store) {
+      return res.status(404).json({ error: 'Không tìm thấy cửa hàng.' });
+    }
+
+    return res.json({
+      store: serializeStore(store),
+      categories: store.categories.map(serializeCategory),
+      products: store.products.map(serializeProduct),
+    });
+  } catch (error) {
+    console.error('[ADMIN STORE MENU ERROR]', error);
+    return res.status(500).json({ error: 'Không thể tải thực đơn của cửa hàng.' });
+  }
+});
+
+// 9. Admin tạm ẩn hoặc mở bán lại một món ăn của cửa hàng
+adminRouter.patch('/stores/:storeId/products/:productId/availability', async (req: Request, res: Response) => {
+  try {
+    const { storeId, productId } = req.params;
+    const { isAvailable, is_available } = req.body;
+    const nextVal = isAvailable !== undefined ? isAvailable : is_available;
+
+    if (typeof nextVal !== 'boolean') {
+      return res.status(400).json({ error: 'Trường isAvailable (boolean) là bắt buộc.' });
+    }
+
+    const existing = await prisma.product.findUnique({
+      where: { id: productId },
+      select: { id: true, storeId: true },
+    });
+
+    if (!existing || existing.storeId !== storeId) {
+      return res.status(404).json({ error: 'Không tìm thấy món ăn trong cửa hàng này.' });
+    }
+
+    const updated = await prisma.product.update({
+      where: { id: productId },
+      data: { isAvailable: nextVal },
+      include: {
+        category: { select: { id: true, name: true } },
+      },
+    });
+
+    return res.json({
+      success: true,
+      message: nextVal ? 'Đã mở bán lại món ăn.' : 'Đã tạm ẩn món ăn khỏi thực đơn.',
+      product: serializeProduct(updated),
+    });
+  } catch (error) {
+    console.error('[ADMIN PRODUCT AVAILABILITY ERROR]', error);
+    return res.status(500).json({ error: 'Không thể cập nhật trạng thái món ăn.' });
+  }
+});
+
+// 10. Admin gỡ bỏ món ăn vi phạm (chặn xóa cứng nếu món đã có trong đơn hàng)
+adminRouter.delete('/stores/:storeId/products/:productId', async (req: Request, res: Response) => {
+  try {
+    const { storeId, productId } = req.params;
+    const existing = await prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        _count: {
+          select: { orderItems: true },
+        },
+      },
+    });
+
+    if (!existing || existing.storeId !== storeId) {
+      return res.status(404).json({ error: 'Không tìm thấy món ăn trong cửa hàng này.' });
+    }
+
+    if (existing._count.orderItems > 0) {
+      return res.status(400).json({
+        error:
+          'Món ăn này đã phát sinh trong lịch sử đơn hàng nên không thể xóa vĩnh viễn. Hãy dùng nút Tạm ẩn để ngừng bán.',
+      });
+    }
+
+    await prisma.product.delete({ where: { id: productId } });
+    return res.json({
+      success: true,
+      message: 'Đã gỡ món ăn khỏi thực đơn cửa hàng.',
+      deletedProductId: productId,
+    });
+  } catch (error) {
+    console.error('[ADMIN PRODUCT DELETE ERROR]', error);
+    return res.status(500).json({ error: 'Không thể xóa món ăn.' });
   }
 });
