@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
-import { Navbar, Footer, CartDrawer } from '../components';
+import { Navbar, Footer, CartDrawer, SesVerificationBanner } from '../components';
 import { useAuthStore } from '../store/useAuthStore';
 
 export const CustomerLayout: React.FC = () => {
@@ -14,6 +14,9 @@ export const CustomerLayout: React.FC = () => {
     <div className="min-h-screen bg-[#FFFDF9] text-[#1E293B] flex flex-col font-sans selection:bg-[#FF5A1F] selection:text-white">
       {/* Main Navbar */}
       <Navbar />
+
+      {/* AWS SES Email Verification Reminder Banner */}
+      <SesVerificationBanner />
 
       {/* Page Content */}
       <div className="flex-1">
