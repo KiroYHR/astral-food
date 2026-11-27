@@ -1,4 +1,3 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { config } from '../config/index.js';
 
 export interface AiDescriptionResult {
@@ -6,6 +5,7 @@ export interface AiDescriptionResult {
   suggestedTags: string[];
   suggestedPriceRange: { min: number; max: number };
   source: 'gemini' | 'fallback';
+  model?: string;
 }
 
 function buildKeywordClause(keywords?: string): string {
@@ -113,15 +113,7 @@ export async function generateProductMarketingDescription(
     return smartFallback;
   }
 
-  try {
-    const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-    const genAI = new GoogleGenerativeAI(config.ai.geminiApiKey);
-    const model = genAI.getGenerativeModel({
-      model: modelName,
-      generationConfig: { responseMimeType: 'application/json' } as any,
-    });
-
-    const prompt = `Bạn là một chuyên gia ẩm thực và marketing đồ ăn cho ứng dụng giao đồ ăn tại Việt Nam.
+  const prompt = `Bạn là một chuyên gia ẩm thực và marketing đồ ăn cho ứng dụng giao đồ ăn tại Việt Nam.
 Hãy viết một đoạn mô tả ngắn gọn (2-3 câu bằng tiếng Việt tự nhiên), cực kỳ hấp dẫn, kích thích vị giác cho món: '${productName}'.
 Từ khóa gợi ý: ${keywords || 'thơm ngon, tươi mới, đậm đà'}.
 Đồng thời gợi ý 4 hashtag ngắn gọn tiếng Việt không dấu dạng snake_case và khoảng giá tham khảo hợp lý tại Việt Nam (đơn vị VNĐ).
@@ -132,38 +124,89 @@ Trả lời đúng định dạng JSON thuần:
   "suggestedPriceRange": { "min": 40000, "max": 75000 }
 }`;
 
-    const result = await model.generateContent(prompt);
-    const rawText = result.response.text();
-    const cleaned = rawText
-      .replace(/^```json\s*/i, '')
-      .replace(/^```\s*/i, '')
-      .replace(/```\s*$/i, '')
-      .trim();
+  const candidateModels = Array.from(
+    new Set(
+      [
+        process.env.GEMINI_MODEL?.trim(),
+        'gemini-flash-lite-latest',
+        'gemini-flash-latest',
+        'gemini-3.8-flash',
+      ].filter((m): m is string => Boolean(m))
+    )
+  );
 
-    const parsed = JSON.parse(cleaned);
-    const description =
-      typeof parsed?.description === 'string' && parsed.description.trim().length > 0
-        ? parsed.description.trim()
-        : smartFallback.description;
-    const suggestedTags =
-      Array.isArray(parsed?.suggestedTags) && parsed.suggestedTags.length > 0
-        ? parsed.suggestedTags.slice(0, 4).map((t: unknown) => String(t).trim()).filter(Boolean)
-        : smartFallback.suggestedTags;
-    const minPrice = Number(parsed?.suggestedPriceRange?.min);
-    const maxPrice = Number(parsed?.suggestedPriceRange?.max);
-    const suggestedPriceRange =
-      Number.isFinite(minPrice) && Number.isFinite(maxPrice) && minPrice > 0 && maxPrice >= minPrice
-        ? { min: minPrice, max: maxPrice }
-        : smartFallback.suggestedPriceRange;
+  for (const modelName of candidateModels) {
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-goog-api-key': config.ai.geminiApiKey,
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { responseMimeType: 'application/json' },
+          }),
+          signal: AbortSignal.timeout(10000),
+        }
+      );
 
-    return {
-      description,
-      suggestedTags,
-      suggestedPriceRange,
-      source: 'gemini',
-    };
-  } catch (error) {
-    console.error('[AI SERVICE ERROR] Fallback triggered:', error instanceof Error ? error.message : error);
-    return smartFallback;
+      if (!response.ok) {
+        const errBody = await response.text();
+        console.warn(`[AI SERVICE WARN] Model ${modelName} HTTP ${response.status}: ${errBody.slice(0, 200)}`);
+        continue;
+      }
+
+      const payload: any = await response.json();
+      const rawText: string =
+        payload?.candidates?.[0]?.content?.parts
+          ?.map((p: any) => (typeof p?.text === 'string' ? p.text : ''))
+          .join('') || '';
+
+      if (!rawText.trim()) {
+        console.warn(`[AI SERVICE WARN] Model ${modelName} returned empty text`);
+        continue;
+      }
+
+      const cleaned = rawText
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/```\s*$/i, '')
+        .trim();
+
+      const parsed = JSON.parse(cleaned);
+      const description =
+        typeof parsed?.description === 'string' && parsed.description.trim().length > 0
+          ? parsed.description.trim()
+          : smartFallback.description;
+      const suggestedTags =
+        Array.isArray(parsed?.suggestedTags) && parsed.suggestedTags.length > 0
+          ? parsed.suggestedTags.slice(0, 4).map((t: unknown) => String(t).trim()).filter(Boolean)
+          : smartFallback.suggestedTags;
+      const minPrice = Number(parsed?.suggestedPriceRange?.min);
+      const maxPrice = Number(parsed?.suggestedPriceRange?.max);
+      const suggestedPriceRange =
+        Number.isFinite(minPrice) && Number.isFinite(maxPrice) && minPrice > 0 && maxPrice >= minPrice
+          ? { min: minPrice, max: maxPrice }
+          : smartFallback.suggestedPriceRange;
+
+      return {
+        description,
+        suggestedTags,
+        suggestedPriceRange,
+        source: 'gemini',
+        model: modelName,
+      };
+    } catch (error) {
+      console.warn(
+        `[AI SERVICE WARN] Model ${modelName} failed:`,
+        error instanceof Error ? error.message : error
+      );
+    }
   }
+
+  console.error('[AI SERVICE ERROR] All Gemini models failed, using smart fallback.');
+  return smartFallback;
 }

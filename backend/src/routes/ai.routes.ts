@@ -21,6 +21,7 @@ aiRouter.post('/generate-description', async (req: Request, res: Response) => {
       suggestedPriceRange: result.suggestedPriceRange,
       suggested_price_range: result.suggestedPriceRange,
       aiProvider: result.source,
+      aiModel: result.model || null,
     });
   } catch (error) {
     console.error('[AI COPILOT ERROR]', error);
