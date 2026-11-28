@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Star,
@@ -9,11 +9,25 @@ import {
   ArrowRight,
   SlidersHorizontal,
   ChevronRight,
+  ChevronLeft,
   TrendingUp,
+  Award,
+  ShoppingBag,
 } from 'lucide-react';
 import { storeService, productService } from '../../api/services';
-import type { Store, Product } from '../../types';
+import type { Store, Product, TopSellingDishItem } from '../../types';
 import { FoodDetailModal } from '../../components/FoodDetailModal';
+
+function getYesterdayDateLabel(): string {
+  const vnOffsetMs = 7 * 60 * 60 * 1000;
+  const nowVn = new Date(Date.now() + vnOffsetMs);
+  const startTodayVnUtc =
+    Date.UTC(nowVn.getUTCFullYear(), nowVn.getUTCMonth(), nowVn.getUTCDate()) - vnOffsetMs;
+  const yesterdayVn = new Date(startTodayVnUtc - 24 * 60 * 60 * 1000 + vnOffsetMs);
+  return `${String(yesterdayVn.getUTCDate()).padStart(2, '0')}/${String(
+    yesterdayVn.getUTCMonth() + 1
+  ).padStart(2, '0')}/${yesterdayVn.getUTCFullYear()}`;
+}
 
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
@@ -21,11 +35,18 @@ export const HomePage: React.FC = () => {
   const searchQuery = searchParams.get('q') || '';
 
   const [stores, setStores] = useState<Store[]>([]);
-  const [allProducts, setAllProducts] = useState<{ product: Product; store: Store }[]>([]);
+  const [topDishes, setTopDishes] = useState<TopSellingDishItem[]>([]);
+  const [topDateLabel, setTopDateLabel] = useState<string>(() => getYesterdayDateLabel());
   const [selectedCategory, setSelectedCategory] = useState<string>('Tất cả');
-  const [priceFilter, setPriceFilter] = useState<string>('all');
   const [minRating, setMinRating] = useState<number>(0);
-  const [sortBy, setSortBy] = useState<'popular' | 'rating' | 'price-asc'>('popular');
+  const [sortBy, setSortBy] = useState<'popular' | 'rating'>('popular');
+
+  // Top 4 Carousel state (tự động đổi sau 3s + vuốt qua lại)
+  const [activeSlide, setActiveSlide] = useState(0);
+  const [isCarouselPaused, setIsCarouselPaused] = useState(false);
+  const [dragDeltaX, setDragDeltaX] = useState(0);
+  const dragStartXRef = useRef<number | null>(null);
+  const didSwipeRef = useRef(false);
 
   // Modal xem món
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -37,23 +58,126 @@ export const HomePage: React.FC = () => {
 
   const loadHomeData = async () => {
     try {
-      const storeList = await storeService.getStores();
+      const [storeList, topRes] = await Promise.all([
+        storeService.getStores(),
+        productService.getTopSellingDishes(4).catch(() => null),
+      ]);
       setStores(storeList);
 
-      // Thu thập các món ăn nổi bật song song từ tất cả cửa hàng
-      const storeProductsList = await Promise.all(
-        storeList.map(async (store) => {
+      if (topRes && topRes.items.length > 0) {
+        setTopDishes(topRes.items.slice(0, 4));
+        if (topRes.date_label) {
+          setTopDateLabel(topRes.date_label);
+        }
+        return;
+      }
+
+      // Fallback an toàn nếu server chưa cập nhật route /products/top-selling
+      const prioritizedStores = [...storeList].sort((a, b) => (b.rating || 0) - (a.rating || 0));
+      const storeProductBuckets = await Promise.all(
+        prioritizedStores.slice(0, 6).map(async (store) => {
           try {
             const prods = await productService.getProductsByStore(store.id);
-            return prods.slice(0, 2).map((p) => ({ product: p, store }));
+            return prods
+              .filter((p) => p.is_available !== false)
+              .map((p) => ({ product: p, store }));
           } catch {
             return [];
           }
         })
       );
-      setAllProducts(storeProductsList.flat());
+
+      const fallbackItems: TopSellingDishItem[] = [];
+      const usedProductIds = new Set<string>();
+
+      for (const bucket of storeProductBuckets) {
+        if (fallbackItems.length >= 4) break;
+        if (bucket.length > 0) {
+          const first = bucket[0];
+          usedProductIds.add(first.product.id);
+          fallbackItems.push({
+            rank: fallbackItems.length + 1,
+            quantity_sold: 0,
+            orders_count: 0,
+            source: 'featured',
+            product: first.product,
+            store: first.store,
+          });
+        }
+      }
+
+      if (fallbackItems.length < 4) {
+        for (const pair of storeProductBuckets.flat()) {
+          if (fallbackItems.length >= 4) break;
+          if (!usedProductIds.has(pair.product.id)) {
+            usedProductIds.add(pair.product.id);
+            fallbackItems.push({
+              rank: fallbackItems.length + 1,
+              quantity_sold: 0,
+              orders_count: 0,
+              source: 'featured',
+              product: pair.product,
+              store: pair.store,
+            });
+          }
+        }
+      }
+
+      setTopDishes(fallbackItems);
     } catch (err) {
       console.error('Error loading home data:', err);
+    }
+  };
+
+  // Tự động chuyển món sau mỗi 3 giây
+  useEffect(() => {
+    if (topDishes.length <= 1 || isCarouselPaused) return;
+
+    const timer = window.setInterval(() => {
+      setActiveSlide((prev) => (prev + 1) % topDishes.length);
+    }, 3000);
+
+    return () => window.clearInterval(timer);
+  }, [topDishes.length, isCarouselPaused]);
+
+  const safeSlideIndex = topDishes.length > 0 ? activeSlide % topDishes.length : 0;
+
+  const goPrevSlide = () => {
+    if (topDishes.length <= 1) return;
+    setActiveSlide((prev) => (prev - 1 + topDishes.length) % topDishes.length);
+  };
+
+  const goNextSlide = () => {
+    if (topDishes.length <= 1) return;
+    setActiveSlide((prev) => (prev + 1) % topDishes.length);
+  };
+
+  const handleDragStart = (clientX: number) => {
+    dragStartXRef.current = clientX;
+    didSwipeRef.current = false;
+    setIsCarouselPaused(true);
+  };
+
+  const handleDragMove = (clientX: number) => {
+    if (dragStartXRef.current === null) return;
+    const delta = clientX - dragStartXRef.current;
+    if (Math.abs(delta) > 6) {
+      didSwipeRef.current = true;
+    }
+    setDragDeltaX(delta);
+  };
+
+  const handleDragEnd = () => {
+    if (dragStartXRef.current === null) return;
+    const delta = dragDeltaX;
+    dragStartXRef.current = null;
+    setDragDeltaX(0);
+    setIsCarouselPaused(false);
+
+    if (delta <= -45) {
+      goNextSlide();
+    } else if (delta >= 45) {
+      goPrevSlide();
     }
   };
 
@@ -97,24 +221,6 @@ export const HomePage: React.FC = () => {
     })
     .sort((a, b) => {
       if (sortBy === 'rating') return (b.rating || 0) - (a.rating || 0);
-      return 0;
-    });
-
-  // Lọc và sắp xếp món ăn nổi bật
-  const filteredProducts = allProducts
-    .filter(({ product, store }) => {
-      const matchSearch =
-        !normalizedQuery ||
-        normalizeVietnamese(product.name).includes(normalizedQuery) ||
-        normalizeVietnamese(store.name).includes(normalizedQuery);
-      if (!matchSearch) return false;
-      if (priceFilter === 'under35') return product.price < 35000;
-      if (priceFilter === '35to60') return product.price >= 35000 && product.price <= 60000;
-      if (priceFilter === 'above60') return product.price > 60000;
-      return true;
-    })
-    .sort((a, b) => {
-      if (sortBy === 'price-asc') return a.product.price - b.product.price;
       return 0;
     });
 
@@ -190,7 +296,273 @@ export const HomePage: React.FC = () => {
       </section>
 
       {/* ==========================================
-          2. CATEGORY PILLS BAR
+          2. TOP 4 MÓN NGON BÁN CHẠY HÔM QUA (BANNER CAROUSEL 3S)
+         ========================================== */}
+      {topDishes.length > 0 && (
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-4">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+            <div>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h2 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
+                  <TrendingUp className="w-6 h-6 text-[#FF5A1F]" />
+                  <span>Món Ngon Bán Chạy Hôm Qua</span>
+                </h2>
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-orange-100 text-[#FF5A1F] border border-orange-200 text-[11px] font-black uppercase tracking-wider">
+                  <Award className="w-3.5 h-3.5" /> TOP {topDishes.length} • {topDateLabel}
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                4 món ăn được đặt nhiều nhất trong ngày hôm qua — tự động chuyển sau 3 giây, vuốt qua lại để khám phá
+              </p>
+            </div>
+
+            {topDishes.length > 1 && (
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <span className="text-xs font-bold text-gray-500 mr-1">
+                  {safeSlideIndex + 1} / {topDishes.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={goPrevSlide}
+                  className="w-9 h-9 rounded-full bg-white hover:bg-orange-50 border border-gray-200 hover:border-orange-300 text-gray-700 hover:text-[#FF5A1F] flex items-center justify-center shadow-xs transition-colors cursor-pointer"
+                  aria-label="Món trước"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={goNextSlide}
+                  className="w-9 h-9 rounded-full bg-white hover:bg-orange-50 border border-gray-200 hover:border-orange-300 text-gray-700 hover:text-[#FF5A1F] flex items-center justify-center shadow-xs transition-colors cursor-pointer"
+                  aria-label="Món tiếp theo"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Large Promotional Banner Viewport */}
+          <div
+            className="relative rounded-3xl overflow-hidden shadow-2xl shadow-orange-500/15 border border-orange-100 bg-gray-950 select-none touch-pan-y cursor-grab active:cursor-grabbing"
+            onMouseEnter={() => setIsCarouselPaused(true)}
+            onMouseLeave={() => {
+              setIsCarouselPaused(false);
+              if (dragStartXRef.current !== null) {
+                handleDragEnd();
+              }
+            }}
+            onPointerDown={(e) => {
+              if ((e.target as HTMLElement).closest('button, a')) return;
+              handleDragStart(e.clientX);
+            }}
+            onPointerMove={(e) => handleDragMove(e.clientX)}
+            onPointerUp={handleDragEnd}
+            onPointerCancel={handleDragEnd}
+          >
+            {/* Sliding Track */}
+            <div
+              className={`flex ${dragDeltaX === 0 ? 'transition-transform duration-700 ease-out' : ''}`}
+              style={{
+                transform: `translateX(calc(-${safeSlideIndex * 100}% + ${dragDeltaX}px))`,
+              }}
+            >
+              {topDishes.map((item, idx) => {
+                const isActive = idx === safeSlideIndex;
+                return (
+                  <div
+                    key={item.product.id}
+                    className="w-full shrink-0 relative h-[420px] sm:h-[460px] lg:h-[500px] overflow-hidden"
+                  >
+                    {/* Background Dish Image */}
+                    <img
+                      src={item.product.image_s3_url}
+                      alt={item.product.name}
+                      draggable={false}
+                      className={`w-full h-full object-cover transition-transform duration-[3000ms] ease-out ${
+                        isActive ? 'scale-105' : 'scale-100'
+                      }`}
+                    />
+
+                    {/* Dark Cinematic Scrim */}
+                    <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/60 to-black/15" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/25" />
+
+                    {/* Banner Content */}
+                    <div className="relative z-10 h-full flex flex-col justify-between p-6 sm:p-10 lg:p-14 max-w-2xl">
+                      {/* Top Badges */}
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-coral-gradient text-white text-xs font-black tracking-wide shadow-lg shadow-orange-500/30">
+                          <Flame className="w-3.5 h-3.5 fill-white" />
+                          <span>TOP #{item.rank} BÁN CHẠY</span>
+                        </span>
+
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 backdrop-blur-md text-amber-200 border border-white/20 text-xs font-bold">
+                          <ShoppingBag className="w-3.5 h-3.5" />
+                          {item.quantity_sold > 0 ? (
+                            <span>
+                              {item.quantity_sold} phần đã đặt{' '}
+                              {item.source === 'yesterday' ? 'hôm qua' : 'gần đây'}
+                            </span>
+                          ) : (
+                            <span>Món nổi bật được yêu thích</span>
+                          )}
+                        </span>
+                      </div>
+
+                      {/* Middle & Bottom Dish Showcase */}
+                      <div className="space-y-4">
+                        {/* Store pill */}
+                        <div className="inline-flex items-center gap-2.5 px-3 py-1.5 rounded-2xl bg-white/15 backdrop-blur-md border border-white/20 text-white">
+                          <img
+                            src={item.store.logo_s3_url}
+                            alt={item.store.name}
+                            draggable={false}
+                            className="w-6 h-6 rounded-lg object-cover border border-white/30"
+                          />
+                          <span className="text-xs font-bold">{item.store.name}</span>
+                          {(item.store.review_count ?? 0) > 0 && Number(item.store.rating) > 0 && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-300 pl-1 border-l border-white/25">
+                              <Star className="w-3 h-3 fill-amber-300 text-amber-300" />
+                              {Number(item.store.rating).toFixed(1)}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="space-y-2">
+                          <h3 className="text-2xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-tight drop-shadow-sm line-clamp-2">
+                            {item.product.name}
+                          </h3>
+                          <p className="text-xs sm:text-base text-white/85 line-clamp-2 max-w-xl leading-relaxed">
+                            {item.product.description || 'Hương vị đậm đà chuẩn quán, nguyên liệu tươi ngon mỗi ngày.'}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-4 pt-2">
+                          <div className="text-2xl sm:text-3xl font-black text-amber-300 tracking-tight">
+                            {Number(item.product.price).toLocaleString('vi-VN')} đ
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (didSwipeRef.current) return;
+                                setSelectedProduct(item.product);
+                                setSelectedProductStore(item.store);
+                              }}
+                              className="px-5 py-3 rounded-2xl bg-coral-gradient hover:opacity-95 text-white font-black text-xs sm:text-sm shadow-xl shadow-orange-500/30 flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
+                            >
+                              <Plus className="w-4 h-4" />
+                              <span>Đặt Ngay Món Này</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (didSwipeRef.current) return;
+                                navigate(`/stores/${item.store.id}`);
+                              }}
+                              className="px-4 py-3 rounded-2xl bg-white/15 hover:bg-white/25 backdrop-blur-md text-white border border-white/25 font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all cursor-pointer"
+                            >
+                              <span>Xem Quán</span>
+                              <ArrowRight className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Overlay Prev/Next Buttons on Desktop */}
+            {topDishes.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={goPrevSlide}
+                  className="hidden sm:flex absolute left-4 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-black/45 hover:bg-black/70 text-white border border-white/20 backdrop-blur-md items-center justify-center transition-all cursor-pointer"
+                  aria-label="Slide trước"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={goNextSlide}
+                  className="hidden sm:flex absolute right-4 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-black/45 hover:bg-black/70 text-white border border-white/20 backdrop-blur-md items-center justify-center transition-all cursor-pointer"
+                  aria-label="Slide tiếp theo"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* 4-Dish Quick Selector Cards Strip */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {topDishes.map((item, idx) => {
+              const isSelected = idx === safeSlideIndex;
+              return (
+                <button
+                  key={item.product.id}
+                  type="button"
+                  onClick={() => setActiveSlide(idx)}
+                  className={`group text-left p-3 rounded-2xl border transition-all cursor-pointer flex items-center gap-3 relative overflow-hidden ${
+                    isSelected
+                      ? 'bg-orange-50/90 border-[#FF5A1F] shadow-md shadow-orange-500/10'
+                      : 'bg-white border-gray-100 hover:border-orange-200 hover:bg-orange-50/40'
+                  }`}
+                >
+                  <div className="relative w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-gray-100">
+                    <img
+                      src={item.product.image_s3_url}
+                      alt={item.product.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                    />
+                    <span
+                      className={`absolute top-1 left-1 px-1.5 py-0.5 rounded-md text-[10px] font-black text-white ${
+                        isSelected ? 'bg-[#FF5A1F]' : 'bg-black/70'
+                      }`}
+                    >
+                      #{item.rank}
+                    </span>
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className={`text-xs font-extrabold line-clamp-1 ${
+                        isSelected ? 'text-[#FF5A1F]' : 'text-gray-900'
+                      }`}
+                    >
+                      {item.product.name}
+                    </p>
+                    <p className="text-[11px] text-gray-500 truncate mt-0.5">{item.store.name}</p>
+                    <div className="flex items-center justify-between gap-1 mt-1">
+                      <span className="text-xs font-black text-gray-900">
+                        {Number(item.product.price).toLocaleString('vi-VN')} đ
+                      </span>
+                      {item.quantity_sold > 0 && (
+                        <span className="text-[10px] font-bold text-orange-600 shrink-0">
+                          {item.quantity_sold} đơn
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {isSelected && (
+                    <span className="absolute bottom-0 left-0 right-0 h-1 bg-coral-gradient" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* ==========================================
+          3. CATEGORY PILLS BAR
          ========================================== */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-none">
@@ -216,7 +588,7 @@ export const HomePage: React.FC = () => {
       </section>
 
       {/* ==========================================
-          3. SMART FILTER & SEARCH BAR
+          4. SMART FILTER & SEARCH BAR
          ========================================== */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-100 shadow-xs flex flex-wrap items-center justify-between gap-4 text-xs">
@@ -225,18 +597,6 @@ export const HomePage: React.FC = () => {
             <span className="font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
               <SlidersHorizontal className="w-3.5 h-3.5" /> Bộ Lọc:
             </span>
-
-            {/* Price Filter */}
-            <select
-              value={priceFilter}
-              onChange={(e) => setPriceFilter(e.target.value)}
-              className="px-3 py-2 bg-[#FFFDF9] border border-gray-200 rounded-xl font-semibold text-gray-700 focus:outline-none focus:border-orange-500"
-            >
-              <option value="all">Khoảng giá: Tất cả</option>
-              <option value="under35">Dưới 35.000đ</option>
-              <option value="35to60">35.000đ - 60.000đ</option>
-              <option value="above60">Trên 60.000đ</option>
-            </select>
 
             {/* Rating Filter */}
             <select
@@ -255,19 +615,18 @@ export const HomePage: React.FC = () => {
             <span className="text-gray-400 font-medium">Sắp xếp:</span>
             <select
               value={sortBy}
-              onChange={(e: any) => setSortBy(e.target.value)}
+              onChange={(e) => setSortBy(e.target.value as 'popular' | 'rating')}
               className="px-3 py-2 bg-[#FFFDF9] border border-gray-200 rounded-xl font-bold text-gray-800 focus:outline-none focus:border-orange-500"
             >
               <option value="popular">Phổ biến nhất</option>
               <option value="rating">Đánh giá cao nhất</option>
-              <option value="price-asc">Giá món: Thấp đến cao</option>
             </select>
           </div>
         </div>
       </section>
 
       {/* ==========================================
-          4. "QUÁN NGON QUANH BẠN" (STORES GRID)
+          5. "QUÁN NGON QUANH BẠN" (STORES GRID)
          ========================================== */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
         <div className="flex items-center justify-between">
@@ -293,7 +652,6 @@ export const HomePage: React.FC = () => {
               onClick={() => {
                 setSelectedCategory('Tất cả');
                 setSearchParams({}, { replace: true });
-                setPriceFilter('all');
                 setMinRating(0);
               }}
               className="px-4 py-2 rounded-xl bg-orange-500 text-white text-xs font-bold hover:bg-orange-600 transition-colors cursor-pointer"
@@ -368,85 +726,6 @@ export const HomePage: React.FC = () => {
             ))}
           </div>
         )}
-      </section>
-
-      {/* ==========================================
-          5. "MÓN NGON ĐANG HOT" (HOT DISHES)
-         ========================================== */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
-              <TrendingUp className="w-6 h-6 text-[#FF5A1F]" />
-              <span>Món Ngon Đang Bán Chạy</span>
-            </h2>
-            <p className="text-xs text-gray-500 mt-1">
-              Những món ăn được khách hàng yêu thích và đặt nhiều nhất trong tuần
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {filteredProducts.map(({ product, store }) => (
-            <div
-              key={product.id}
-              className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-xs hover:border-orange-200 hover:shadow-md transition-all flex flex-col justify-between group"
-            >
-              <div>
-                <div
-                  className="relative h-40 overflow-hidden bg-gray-100 cursor-pointer"
-                  onClick={() => {
-                    setSelectedProduct(product);
-                    setSelectedProductStore(store);
-                  }}
-                >
-                  <img
-                    src={product.image_s3_url}
-                    alt={product.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                  <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/60 text-white text-[10px] font-medium backdrop-blur-xs">
-                    {store.name}
-                  </div>
-                </div>
-
-                <div className="p-3.5 space-y-1.5">
-                  <h4
-                    onClick={() => {
-                      setSelectedProduct(product);
-                      setSelectedProductStore(store);
-                    }}
-                    className="font-bold text-xs text-gray-900 hover:text-[#FF5A1F] transition-colors line-clamp-1 cursor-pointer"
-                  >
-                    {product.name}
-                  </h4>
-                  <p className="text-[11px] text-gray-500 line-clamp-2 leading-tight">
-                    {product.description}
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-3.5 pt-0 flex items-center justify-between">
-                <span className="font-black text-sm text-[#FF5A1F]">
-                  {product.price.toLocaleString('vi-VN')} đ
-                </span>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedProduct(product);
-                    setSelectedProductStore(store);
-                  }}
-                  className="p-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white transition-all active:scale-95 shadow-xs cursor-pointer flex items-center gap-1 text-xs font-bold px-3"
-                  title="Thêm vào giỏ"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Chọn</span>
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
       </section>
 
       {/* Food Detail Modal */}

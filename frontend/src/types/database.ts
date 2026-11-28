@@ -118,6 +118,21 @@ export interface StoreReviewsResponse {
   reviews: StoreReview[];
 }
 
+export interface TopSellingDishItem {
+  rank: number;
+  quantity_sold: number;
+  orders_count: number;
+  source: 'yesterday' | 'recent' | 'featured';
+  product: Product;
+  store: Store;
+}
+
+export interface TopSellingDishesResponse {
+  period: string;
+  date_label: string;
+  items: TopSellingDishItem[];
+}
+
 /**
  * 5. Bảng orders - Đơn đặt hàng của khách hàng
  * Đồng bộ Điểm 1, 3, 4: items, store_name, discount_amount, voucher_code, customer info

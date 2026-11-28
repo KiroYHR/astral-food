@@ -117,6 +117,188 @@ storesRouter.get('/me', requireRole('MERCHANT', 'ADMIN'), async (req: AuthReques
   }
 });
 
+// 2c. Lấy Top 4 món ăn được đặt nhiều nhất trong ngày hôm qua (cho Banner trang chủ Khách hàng)
+storesRouter.get('/products/top-selling', async (req: Request, res: Response) => {
+  try {
+    const rawLimit = Number(req.query.limit);
+    const limit = Number.isFinite(rawLimit)
+      ? Math.min(10, Math.max(1, Math.trunc(rawLimit)))
+      : 4;
+
+    // Tính khung giờ ngày hôm qua theo múi giờ Việt Nam (UTC+7)
+    const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+    const nowVn = new Date(Date.now() + VN_OFFSET_MS);
+    const startOfTodayVnUtc =
+      Date.UTC(nowVn.getUTCFullYear(), nowVn.getUTCMonth(), nowVn.getUTCDate()) - VN_OFFSET_MS;
+    const startOfYesterday = new Date(startOfTodayVnUtc - 24 * 60 * 60 * 1000);
+    const endOfYesterday = new Date(startOfTodayVnUtc);
+
+    const yesterdayVn = new Date(startOfYesterday.getTime() + VN_OFFSET_MS);
+    const dateLabel = `${String(yesterdayVn.getUTCDate()).padStart(2, '0')}/${String(
+      yesterdayVn.getUTCMonth() + 1
+    ).padStart(2, '0')}/${yesterdayVn.getUTCFullYear()}`;
+
+    type AggregatedDish = {
+      product: any;
+      quantitySold: number;
+      orderIds: Set<string>;
+      source: 'yesterday' | 'recent' | 'featured';
+    };
+
+    const aggregateItems = (
+      rows: Array<{ orderId: string; productId: string; quantity: number; product: any }>,
+      source: 'yesterday' | 'recent',
+      excludeIds: Set<string>
+    ) => {
+      const map = new Map<string, AggregatedDish>();
+      for (const row of rows) {
+        if (!row.product || excludeIds.has(row.productId)) continue;
+        const current = map.get(row.productId) || {
+          product: row.product,
+          quantitySold: 0,
+          orderIds: new Set<string>(),
+          source,
+        };
+        current.quantitySold += Number(row.quantity) || 1;
+        current.orderIds.add(row.orderId);
+        map.set(row.productId, current);
+      }
+      return Array.from(map.values()).sort(
+        (a, b) => b.quantitySold - a.quantitySold || b.orderIds.size - a.orderIds.size
+      );
+    };
+
+    const itemInclude = {
+      product: {
+        include: {
+          category: { select: { id: true, name: true } },
+          store: {
+            include: {
+              _count: { select: { reviews: true, products: true } },
+            },
+          },
+        },
+      },
+    } as const;
+
+    const yesterdayRows = await prisma.orderItem.findMany({
+      where: {
+        order: {
+          createdAt: {
+            gte: startOfYesterday,
+            lt: endOfYesterday,
+          },
+          status: { not: 'CANCELLED' },
+        },
+        product: {
+          isAvailable: true,
+          store: { isActive: true },
+        },
+      },
+      include: itemInclude,
+    });
+
+    const selectedIds = new Set<string>();
+    const selected: AggregatedDish[] = [];
+
+    for (const item of aggregateItems(yesterdayRows, 'yesterday', selectedIds)) {
+      if (selected.length >= limit) break;
+      selected.push(item);
+      selectedIds.add(item.product.id);
+    }
+
+    // Fallback 1: Nếu hôm qua chưa đủ 4 món, bổ sung từ các món đặt nhiều gần đây
+    if (selected.length < limit) {
+      const recentRows = await prisma.orderItem.findMany({
+        where: {
+          order: { status: { not: 'CANCELLED' } },
+          product: {
+            isAvailable: true,
+            store: { isActive: true },
+          },
+        },
+        include: itemInclude,
+      });
+
+      for (const item of aggregateItems(recentRows, 'recent', selectedIds)) {
+        if (selected.length >= limit) break;
+        selected.push(item);
+        selectedIds.add(item.product.id);
+      }
+    }
+
+    // Fallback 2: Nếu hệ thống mới chưa đủ đơn, lấy thêm món nổi bật từ các quán đang mở
+    if (selected.length < limit) {
+      const candidateProducts = await prisma.product.findMany({
+        where: {
+          isAvailable: true,
+          id: { notIn: Array.from(selectedIds) },
+          store: { isActive: true },
+        },
+        include: {
+          category: { select: { id: true, name: true } },
+          store: {
+            include: {
+              _count: { select: { reviews: true, products: true } },
+            },
+          },
+        },
+        orderBy: [{ store: { rating: 'desc' } }, { createdAt: 'desc' }],
+        take: limit * 4,
+      });
+
+      const usedStoreIds = new Set<string>();
+      for (const prod of candidateProducts) {
+        if (selected.length >= limit) break;
+        if (!usedStoreIds.has(prod.storeId)) {
+          selected.push({
+            product: prod,
+            quantitySold: 0,
+            orderIds: new Set<string>(),
+            source: 'featured',
+          });
+          selectedIds.add(prod.id);
+          usedStoreIds.add(prod.storeId);
+        }
+      }
+
+      for (const prod of candidateProducts) {
+        if (selected.length >= limit) break;
+        if (!selectedIds.has(prod.id)) {
+          selected.push({
+            product: prod,
+            quantitySold: 0,
+            orderIds: new Set<string>(),
+            source: 'featured',
+          });
+          selectedIds.add(prod.id);
+        }
+      }
+    }
+
+    const items = selected.slice(0, limit).map((entry, idx) => ({
+      rank: idx + 1,
+      quantity_sold: entry.quantitySold,
+      quantitySold: entry.quantitySold,
+      orders_count: entry.orderIds.size,
+      ordersCount: entry.orderIds.size,
+      source: entry.source,
+      product: serializeProduct(entry.product),
+      store: serializeStore(entry.product.store),
+    }));
+
+    return res.json({
+      period: 'yesterday',
+      date_label: dateLabel,
+      dateLabel,
+      items,
+    });
+  } catch (error) {
+    console.error('[TOP SELLING PRODUCTS ERROR]', error);
+    return res.status(500).json({ error: 'Không thể tải danh sách món bán chạy nhất hôm qua.' });
+  }
+});
+
 // 3. Lấy thông tin chi tiết một cửa hàng theo ID (TV3 Store Detail)
 storesRouter.get('/:id', async (req: Request, res: Response) => {
   try {
