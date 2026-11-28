@@ -18,6 +18,8 @@ import type {
   StoreReview,
   StoreReviewsResponse,
   AdminUserDetail,
+  TopSellingDishItem,
+  TopSellingDishesResponse,
 } from '../types';
 
 export type { AdminUserDetail };
@@ -396,6 +398,118 @@ export const storeService = {
 // 3. PRODUCT SERVICE (TV1 RESTful Contract)
 // ==========================================
 export const productService = {
+  async getTopSellingDishes(limit = 4): Promise<TopSellingDishesResponse> {
+    const vnOffsetMs = 7 * 60 * 60 * 1000;
+    const nowVn = new Date(Date.now() + vnOffsetMs);
+    const startTodayVnUtc =
+      Date.UTC(nowVn.getUTCFullYear(), nowVn.getUTCMonth(), nowVn.getUTCDate()) - vnOffsetMs;
+    const startYesterday = new Date(startTodayVnUtc - 24 * 60 * 60 * 1000);
+    const endYesterday = new Date(startTodayVnUtc);
+    const yesterdayVn = new Date(startYesterday.getTime() + vnOffsetMs);
+    const defaultDateLabel = `${String(yesterdayVn.getUTCDate()).padStart(2, '0')}/${String(
+      yesterdayVn.getUTCMonth() + 1
+    ).padStart(2, '0')}/${yesterdayVn.getUTCFullYear()}`;
+
+    if (USE_MOCK) {
+      await mockDelay(150);
+      const db = getMockDb();
+      const activeStores = db.stores.filter((st) => st.is_active);
+      const storeMap = new Map(activeStores.map((st) => [st.id, st]));
+      const prodMap = new Map(
+        db.products.filter((p) => p.is_available !== false && storeMap.has(p.store_id)).map((p) => [p.id, p])
+      );
+
+      const aggregate = (ordersList: typeof db.orders, source: 'yesterday' | 'recent', exclude: Set<string>) => {
+        const counts = new Map<string, { product: Product; store: Store; qty: number; orders: Set<string> }>();
+        ordersList.forEach((ord) => {
+          if (ord.status === 'CANCELLED') return;
+          ord.items?.forEach((it) => {
+            if (exclude.has(it.product_id)) return;
+            const prod = prodMap.get(it.product_id);
+            const store = prod ? storeMap.get(prod.store_id) : undefined;
+            if (!prod || !store) return;
+            const curr = counts.get(prod.id) || { product: prod, store, qty: 0, orders: new Set<string>() };
+            curr.qty += it.quantity || 1;
+            curr.orders.add(ord.id);
+            counts.set(prod.id, curr);
+          });
+        });
+        return Array.from(counts.values())
+          .sort((a, b) => b.qty - a.qty || b.orders.size - a.orders.size)
+          .map((e) => ({ ...e, source }));
+      };
+
+      const yesterdayOrders = db.orders.filter((o) => {
+        const ts = new Date(o.created_at).getTime();
+        return ts >= startYesterday.getTime() && ts < endYesterday.getTime();
+      });
+
+      const usedIds = new Set<string>();
+      const collected: TopSellingDishItem[] = [];
+
+      for (const entry of aggregate(yesterdayOrders, 'yesterday', usedIds)) {
+        if (collected.length >= limit) break;
+        usedIds.add(entry.product.id);
+        collected.push({
+          rank: collected.length + 1,
+          quantity_sold: entry.qty,
+          orders_count: entry.orders.size,
+          source: 'yesterday',
+          product: entry.product,
+          store: entry.store,
+        });
+      }
+
+      if (collected.length < limit) {
+        for (const entry of aggregate(db.orders, 'recent', usedIds)) {
+          if (collected.length >= limit) break;
+          usedIds.add(entry.product.id);
+          collected.push({
+            rank: collected.length + 1,
+            quantity_sold: entry.qty,
+            orders_count: entry.orders.size,
+            source: 'recent',
+            product: entry.product,
+            store: entry.store,
+          });
+        }
+      }
+
+      if (collected.length < limit) {
+        for (const st of activeStores) {
+          if (collected.length >= limit) break;
+          const prod = db.products.find((p) => p.store_id === st.id && p.is_available !== false && !usedIds.has(p.id));
+          if (prod) {
+            usedIds.add(prod.id);
+            collected.push({
+              rank: collected.length + 1,
+              quantity_sold: 0,
+              orders_count: 0,
+              source: 'featured',
+              product: prod,
+              store: st,
+            });
+          }
+        }
+      }
+
+      return {
+        period: 'yesterday',
+        date_label: defaultDateLabel,
+        items: collected.slice(0, limit),
+      };
+    }
+
+    const res: any = await apiClient.get('/stores/products/top-selling', {
+      params: { limit },
+    });
+    return {
+      period: res?.period || 'yesterday',
+      date_label: res?.date_label || res?.dateLabel || defaultDateLabel,
+      items: Array.isArray(res?.items) ? res.items.slice(0, limit) : [],
+    };
+  },
+
   async getProductsByStore(storeId: string): Promise<Product[]> {
     if (USE_MOCK) {
       await mockDelay();
